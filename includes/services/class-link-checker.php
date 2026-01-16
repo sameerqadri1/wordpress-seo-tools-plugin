@@ -60,9 +60,14 @@ class Link_Checker
 		// Initialize crawl state
 		// Use associative arrays for O(1) lookup instead of O(n) in_array
 		$visited_urls = [];
-		$queued_urls = []; // Track URLs already in queue to prevent duplicates
-		$crawl_queue = [$start_url];
-		$queued_urls[$this->normalize_url_for_comparison($start_url)] = true;
+		$queued_urls = []; // Track normalized URLs already in queue to prevent duplicates
+		$crawl_queue = []; // Store as [normalized_url => original_url] for proper deduplication
+
+		// Normalize and add start URL
+		$normalized_start = $this->normalize_url_for_comparison($start_url);
+		$crawl_queue[$normalized_start] = $start_url; // Store normalized as key, original as value
+		$queued_urls[$normalized_start] = true;
+
 		$all_checked_links = [];
 		$checked_link_urls = []; // Track which links we've already checked to avoid duplicates
 		$broken_links = [];
@@ -96,13 +101,12 @@ class Link_Checker
 				];
 			}
 
-			// Get next URL from queue
-			$current_url = array_shift($crawl_queue);
+			// Get next URL from queue (normalized URL is the key, original URL is the value)
+			$normalized_url = array_key_first($crawl_queue);
+			$current_url = $crawl_queue[$normalized_url];
+			unset($crawl_queue[$normalized_url]);
 
-			// Normalize for comparison
-			$normalized_url = $this->normalize_url_for_comparison($current_url);
-
-			// Skip if already visited
+			// Skip if already visited (double-check after dequeue)
 			if (isset($visited_urls[$normalized_url])) {
 				continue;
 			}
@@ -113,6 +117,9 @@ class Link_Checker
 			$depth = $this->calculate_depth($current_path, $start_path);
 
 			if ($depth > $max_depth) {
+				// Mark as visited even if depth exceeded to prevent re-queuing
+				$visited_urls[$normalized_url] = true;
+				unset($queued_urls[$normalized_url]);
 				continue;
 			}
 
@@ -137,7 +144,8 @@ class Link_Checker
 
 				// Only add if not visited AND not already in queue
 				if (!isset($visited_urls[$normalized_internal]) && !isset($queued_urls[$normalized_internal])) {
-					$crawl_queue[] = $internal_link['url'];
+					// Store normalized URL as key, original URL as value for proper deduplication
+					$crawl_queue[$normalized_internal] = $internal_link['url'];
 					$queued_urls[$normalized_internal] = true;
 				}
 			}
@@ -710,9 +718,18 @@ class Link_Checker
 			return 0;
 		}
 
+		// Get path segments
+		$current_segments = array_filter(explode('/', trim($current_path, '/')));
+		$start_segments = array_filter(explode('/', trim($start_path, '/')));
+
+		// If start path is root, depth is just the number of segments in current path
+		if (empty($start_segments) || $start_path === '/') {
+			return count($current_segments);
+		}
+
 		// Check if current path starts with start path
 		if (strpos($current_path, $start_path) === 0) {
-			// Calculate depth based on path segments
+			// Calculate depth based on path segments difference
 			$relative_path = substr($current_path, strlen($start_path));
 			$relative_path = ltrim($relative_path, '/');
 
@@ -725,9 +742,20 @@ class Link_Checker
 			return count($segments);
 		}
 
-		// If current path doesn't start with start path, calculate from root
-		$current_segments = array_filter(explode('/', trim($current_path, '/')));
-		return count($current_segments);
+		// If current path doesn't start with start path, find common prefix
+		$common_segments = 0;
+		$min_length = min(count($current_segments), count($start_segments));
+
+		for ($i = 0; $i < $min_length; $i++) {
+			if ($current_segments[$i] === $start_segments[$i]) {
+				$common_segments++;
+			} else {
+				break;
+			}
+		}
+
+		// Depth is the difference in segments from common prefix
+		return abs(count($current_segments) - $common_segments);
 	}
 
 	/**
