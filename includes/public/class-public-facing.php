@@ -8,7 +8,7 @@
  * @since      1.0.0
  */
 
-namespace SEO_Marketing_Tools\Public_Facing;
+namespace SEO_Marketing_Tools\Public;
 
 if (!defined('ABSPATH')) {
 	exit;

@@ -13,7 +13,7 @@
 namespace SEO_Marketing_Tools\Core;
 
 use SEO_Marketing_Tools\Admin\Admin;
-use SEO_Marketing_Tools\Public_Facing\Public_Facing;
+use SEO_Marketing_Tools\Public\Public_Facing;
 use SEO_Marketing_Tools\Ajax\Meta_Ajax;
 use SEO_Marketing_Tools\Ajax\Links_Ajax;
 use SEO_Marketing_Tools\Database\Database;
