@@ -58,12 +58,18 @@ class Link_Checker
 		$start_time = microtime(true);
 
 		// Initialize crawl state
+		// Use associative arrays for O(1) lookup instead of O(n) in_array
 		$visited_urls = [];
+		$queued_urls = []; // Track URLs already in queue to prevent duplicates
 		$crawl_queue = [$start_url];
+		$queued_urls[$this->normalize_url_for_comparison($start_url)] = true;
 		$all_checked_links = [];
+		$checked_link_urls = []; // Track which links we've already checked to avoid duplicates
 		$broken_links = [];
 		$pages_crawled = 0;
 		$base_domain = $this->get_base_domain($start_url);
+		$start_path = parse_url($start_url, PHP_URL_PATH) ?: '/';
+		$start_path = rtrim($start_path, '/') ?: '/';
 
 		// Configuration
 		$max_pages = (int) get_option('seo_tools_max_pages_crawl', 1000);
@@ -97,18 +103,22 @@ class Link_Checker
 			$normalized_url = $this->normalize_url_for_comparison($current_url);
 
 			// Skip if already visited
-			if (in_array($normalized_url, $visited_urls, true)) {
+			if (isset($visited_urls[$normalized_url])) {
 				continue;
 			}
 
-			// Check depth
-			$depth = $this->calculate_depth($current_url, $start_url);
+			// Check depth (actual depth from start URL)
+			$current_path = parse_url($current_url, PHP_URL_PATH) ?: '/';
+			$current_path = rtrim($current_path, '/') ?: '/';
+			$depth = $this->calculate_depth($current_path, $start_path);
+
 			if ($depth > $max_depth) {
 				continue;
 			}
 
 			// Mark as visited
-			$visited_urls[] = $normalized_url;
+			$visited_urls[$normalized_url] = true;
+			unset($queued_urls[$normalized_url]);
 
 			// Fetch page
 			$page_content = $this->fetch_page($current_url);
@@ -121,11 +131,14 @@ class Link_Checker
 			// Extract links
 			$links = $this->extract_links_with_categorization($page_content['html'], $current_url, $base_domain);
 
-			// Add internal links to crawl queue
+			// Add internal links to crawl queue (with deduplication)
 			foreach ($links['internal'] as $internal_link) {
 				$normalized_internal = $this->normalize_url_for_comparison($internal_link['url']);
-				if (!in_array($normalized_internal, $visited_urls, true)) {
+
+				// Only add if not visited AND not already in queue
+				if (!isset($visited_urls[$normalized_internal]) && !isset($queued_urls[$normalized_internal])) {
 					$crawl_queue[] = $internal_link['url'];
+					$queued_urls[$normalized_internal] = true;
 				}
 			}
 
@@ -133,6 +146,17 @@ class Link_Checker
 			$links_to_check = array_merge($links['internal'], $links['external']);
 
 			foreach ($links_to_check as $link) {
+				// Normalize link URL for deduplication
+				$normalized_link_url = $this->normalize_url_for_comparison($link['url']);
+
+				// Skip if we've already checked this link
+				if (isset($checked_link_urls[$normalized_link_url])) {
+					continue;
+				}
+
+				// Mark as checked
+				$checked_link_urls[$normalized_link_url] = true;
+
 				// Check link status
 				$timeout = (int) get_option('seo_tools_link_timeout', 5);
 				$result = $this->check_single_link($link['url'], $timeout);
@@ -618,7 +642,7 @@ class Link_Checker
 	}
 
 	/**
-	 * Normalize URL for comparison (remove fragment, normalize www)
+	 * Normalize URL for comparison (remove fragment, normalize www, normalize trailing slash)
 	 *
 	 * @param string $url URL to normalize
 	 * @return string Normalized URL
@@ -651,7 +675,11 @@ class Link_Checker
 		}
 
 		if (isset($parsed['path'])) {
-			$normalized .= $parsed['path'];
+			// Normalize trailing slash - remove it for comparison (except root)
+			$path = rtrim($parsed['path'], '/');
+			$normalized .= $path ?: '/';
+		} else {
+			$normalized .= '/';
 		}
 
 		if (isset($parsed['query'])) {
@@ -664,24 +692,42 @@ class Link_Checker
 	}
 
 	/**
-	 * Calculate depth of URL from start URL
+	 * Calculate depth of URL from start URL path
 	 *
-	 * @param string $url Current URL
-	 * @param string $start_url Start URL
+	 * @param string $current_path Current URL path
+	 * @param string $start_path Start URL path
 	 * @return int Depth level
 	 * @since 1.0.0
 	 */
-	private function calculate_depth(string $url, string $start_url): int
+	private function calculate_depth(string $current_path, string $start_path): int
 	{
-		$start_path = parse_url($start_url, PHP_URL_PATH) ?: '/';
-		$current_path = parse_url($url, PHP_URL_PATH) ?: '/';
+		// Normalize paths
+		$current_path = rtrim($current_path, '/') ?: '/';
+		$start_path = rtrim($start_path, '/') ?: '/';
 
-		// Count path segments difference
-		$start_segments = array_filter(explode('/', trim($start_path, '/')));
+		// If paths are the same, depth is 0
+		if ($current_path === $start_path) {
+			return 0;
+		}
+
+		// Check if current path starts with start path
+		if (strpos($current_path, $start_path) === 0) {
+			// Calculate depth based on path segments
+			$relative_path = substr($current_path, strlen($start_path));
+			$relative_path = ltrim($relative_path, '/');
+
+			if (empty($relative_path)) {
+				return 0;
+			}
+
+			// Count segments in relative path
+			$segments = array_filter(explode('/', $relative_path));
+			return count($segments);
+		}
+
+		// If current path doesn't start with start path, calculate from root
 		$current_segments = array_filter(explode('/', trim($current_path, '/')));
-
-		// Simple depth calculation: difference in path segments
-		return abs(count($current_segments) - count($start_segments));
+		return count($current_segments);
 	}
 
 	/**
