@@ -57,10 +57,76 @@ class Plugin
 
         $this->loader = new Loader();
 
-        $this->define_admin_hooks();
-        $this->define_public_hooks();
+        // Always load AJAX handlers (needed for both admin and frontend)
         $this->define_ajax_hooks();
-        $this->define_cron_hooks();
+
+        // Conditionally load admin hooks only when needed
+        if ($this->should_load_admin()) {
+            $this->define_admin_hooks();
+            $this->define_cron_hooks();
+        }
+
+        // Conditionally load public hooks only on frontend
+        if ($this->should_load_public()) {
+            $this->define_public_hooks();
+        }
+    }
+
+    /**
+     * Check if admin functionality should be loaded.
+     *
+     * @return bool True if admin hooks should be loaded
+     */
+    private function should_load_admin(): bool
+    {
+        // Skip during WordPress installation
+        if (defined('WP_INSTALLING') && WP_INSTALLING) {
+            return false;
+        }
+
+        // Only load in admin area
+        if (!is_admin()) {
+            return false;
+        }
+
+        // Skip on plugin installation/upload pages
+        $pagenow = $GLOBALS['pagenow'] ?? '';
+        if (in_array($pagenow, ['plugin-install.php', 'plugins.php'], true)) {
+            // Only skip if we're actually installing/uploading
+            if (isset($_GET['action']) && in_array($_GET['action'], ['upload-plugin', 'install-plugin', 'activate-plugin', 'deactivate-plugin'], true)) {
+                return false;
+            }
+        }
+
+        // Skip during plugin installation via POST
+        if (isset($_POST['action']) && in_array($_POST['action'], ['upload-plugin', 'install-plugin'], true)) {
+            return false;
+        }
+
+        // Skip during AJAX plugin operations
+        if (defined('DOING_AJAX') && DOING_AJAX) {
+            if (isset($_REQUEST['action']) && in_array($_REQUEST['action'], ['install-plugin', 'activate-plugin', 'deactivate-plugin'], true)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Check if public functionality should be loaded.
+     *
+     * @return bool True if public hooks should be loaded
+     */
+    private function should_load_public(): bool
+    {
+        // Skip during WordPress installation
+        if (defined('WP_INSTALLING') && WP_INSTALLING) {
+            return false;
+        }
+
+        // Only load on frontend
+        return !is_admin();
     }
 
     /**

@@ -152,38 +152,20 @@ register_deactivation_hook(__FILE__, 'deactivate_seo_marketing_tools');
 
 /**
  * Begins execution of the plugin.
+ * 
+ * Uses conditional loading to only initialize what's needed:
+ * - AJAX handlers: Always loaded (needed for both admin and frontend)
+ * - Admin hooks: Only loaded when in admin area (and not during plugin operations)
+ * - Public hooks: Only loaded on frontend
  */
 function run_seo_marketing_tools()
 {
-    // Skip plugin initialization during WordPress installation
+    // Skip during WordPress installation
     if (defined('WP_INSTALLING') && WP_INSTALLING) {
         return;
     }
 
-    // Skip on plugin installation/upload pages to prevent conflicts and resource exhaustion
-    if (is_admin()) {
-        // Check if we're on plugin installation pages
-        $pagenow = $GLOBALS['pagenow'] ?? '';
-        if (in_array($pagenow, ['plugin-install.php', 'plugins.php'], true)) {
-            // Check if we're in the middle of plugin operations
-            if (isset($_GET['action']) && in_array($_GET['action'], ['upload-plugin', 'install-plugin', 'activate-plugin', 'deactivate-plugin'], true)) {
-                return;
-            }
-        }
-
-        // Skip if we're uploading/installing a plugin via POST
-        if (isset($_POST['action']) && in_array($_POST['action'], ['upload-plugin', 'install-plugin'], true)) {
-            return;
-        }
-
-        // Skip during AJAX plugin operations
-        if (defined('DOING_AJAX') && DOING_AJAX) {
-            if (isset($_REQUEST['action']) && in_array($_REQUEST['action'], ['install-plugin', 'activate-plugin', 'deactivate-plugin'], true)) {
-                return;
-            }
-        }
-    }
-
+    // Initialize plugin with conditional loading
     $plugin = new SEO_Marketing_Tools\Core\Plugin();
     $plugin->run();
 }
