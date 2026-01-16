@@ -10,6 +10,10 @@
     
     let currentResults = null;
     let currentFilter = 'all';
+    let currentJobId = null;
+    let progressInterval = null;
+    let timerInterval = null;
+    let scanStartTime = null;
     
     /**
      * Initialize broken link checker
@@ -105,11 +109,17 @@
             $('#link-results').slideUp();
             $('#link-checker-form')[0].reset();
             resetRecaptcha();
+            scanStartTime = null;
         });
         
         // Export CSV
         $('#export-csv').on('click', function() {
             exportToCSV();
+        });
+        
+        // Cancel scan button
+        $('#cancel-scan-btn').on('click', function() {
+            cancelScan();
         });
     }
     
@@ -129,7 +139,7 @@
     }
     
     /**
-     * Check links on page
+     * Check links on page (full website crawl)
      */
     function checkLinks(url, recaptchaResponse) {
         const $btn = $('#check-btn');
@@ -139,6 +149,12 @@
         
         $('#link-results').hide();
         $('#error-message').hide();
+        $('#progress-display').show();
+        $('#cancel-scan-btn').show();
+        
+        // Start timer
+        scanStartTime = Date.now();
+        startTimer();
         
         $.ajax({
             url: seoToolsConfig.ajax_url,
@@ -151,16 +167,39 @@
             },
             success: function(response) {
                 if (response.success) {
-                    currentResults = response.data;
-                    displayResults(response.data);
+                    stopTimer();
+                    stopProgressPolling();
+                    
+                    currentResults = {
+                        total_links_checked: response.data.total_links_checked,
+                        working_links: response.data.working_links,
+                        broken_links_count: response.data.broken_links_count,
+                        broken_links: response.data.broken_links,
+                        pages_crawled: response.data.pages_crawled,
+                        scan_time: response.data.scan_time
+                    };
+                    
+                    displayResults(currentResults);
                     loadRateLimitStatus(); // Refresh rate limit
+                    
+                    $('#progress-display').hide();
+                    $('#cancel-scan-btn').hide();
                 } else {
+                    stopTimer();
+                    stopProgressPolling();
                     showError(response.data.message || 'Failed to check links');
+                    $('#progress-display').hide();
+                    $('#cancel-scan-btn').hide();
                 }
             },
             error: function(xhr) {
+                stopTimer();
+                stopProgressPolling();
+                $('#progress-display').hide();
+                $('#cancel-scan-btn').hide();
+                
                 if (xhr.status === 504) {
-                    showError('Request timeout. The page may have too many links or be slow to respond.');
+                    showError('Request timeout. The scan took too long. Please try a smaller website.');
                 } else {
                     showError('Network error. Please try again.');
                 }
@@ -175,69 +214,192 @@
     }
     
     /**
-     * Display check results
+     * Start timer
+     */
+    function startTimer() {
+        updateTimer();
+        timerInterval = setInterval(updateTimer, 1000);
+    }
+    
+    /**
+     * Stop timer
+     */
+    function stopTimer() {
+        if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+        }
+    }
+    
+    /**
+     * Update timer display
+     */
+    function updateTimer() {
+        if (!scanStartTime) return;
+        
+        const elapsed = Math.floor((Date.now() - scanStartTime) / 1000);
+        const minutes = Math.floor(elapsed / 60);
+        const seconds = elapsed % 60;
+        
+        let timeStr = '';
+        if (minutes > 0) {
+            timeStr = minutes + 'm ' + seconds + 's';
+        } else {
+            timeStr = seconds + 's';
+        }
+        
+        $('#elapsed-time').text(timeStr);
+    }
+    
+    /**
+     * Start progress polling
+     */
+    function startProgressPolling(jobId) {
+        currentJobId = jobId;
+        pollProgress();
+        progressInterval = setInterval(pollProgress, 2000); // Poll every 2 seconds
+    }
+    
+    /**
+     * Stop progress polling
+     */
+    function stopProgressPolling() {
+        if (progressInterval) {
+            clearInterval(progressInterval);
+            progressInterval = null;
+        }
+        currentJobId = null;
+    }
+    
+    /**
+     * Poll for scan progress
+     */
+    function pollProgress() {
+        if (!currentJobId) return;
+        
+        $.ajax({
+            url: seoToolsConfig.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'seo_get_scan_progress',
+                nonce: seoToolsConfig.nonces.links,
+                job_id: currentJobId
+            },
+            success: function(response) {
+                if (response.success) {
+                    updateProgressDisplay(response.data);
+                }
+            }
+        });
+    }
+    
+    /**
+     * Update progress display
+     */
+    function updateProgressDisplay(progress) {
+        $('#pages-crawled').text(progress.pages_crawled || 0);
+        $('#links-checked').text(progress.links_checked || 0);
+        $('#broken-found').text(progress.broken_links_found || 0);
+    }
+    
+    /**
+     * Cancel scan
+     */
+    function cancelScan() {
+        if (!currentJobId) return;
+        
+        $('#cancel-scan-btn').prop('disabled', true).text('Cancelling...');
+        
+        $.ajax({
+            url: seoToolsConfig.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'seo_cancel_scan',
+                nonce: seoToolsConfig.nonces.links,
+                job_id: currentJobId
+            },
+            success: function(response) {
+                stopTimer();
+                stopProgressPolling();
+                $('#progress-display').hide();
+                $('#cancel-scan-btn').hide();
+                
+                if (response.success) {
+                    showError('Scan cancelled by user.');
+                } else {
+                    showError('Failed to cancel scan.');
+                }
+                
+                // Re-enable button
+                const $btn = $('#check-btn');
+                $btn.prop('disabled', false);
+                $btn.find('.btn-text').show();
+                $btn.find('.btn-loader').hide();
+                resetRecaptcha();
+            }
+        });
+    }
+    
+    /**
+     * Display check results (show only broken links)
      */
     function displayResults(data) {
         // Update stats
-        $('#total-links').text(data.total_links);
-        $('#working-links').text(data.working_links);
-        $('#broken-links').text(data.broken_links);
+        $('#total-links').text(data.total_links_checked || 0);
+        $('#working-links').text(data.working_links || 0);
+        $('#broken-links').text(data.broken_links_count || 0);
+        $('#pages-crawled-stat').text(data.pages_crawled || 0);
         $('#scan-time').text(data.scan_time + 's');
         
-        // Filter links
-        let filteredLinks = data.links;
-        if (currentFilter === 'broken') {
-            filteredLinks = data.links.filter(link => link.status === 'broken' || link.status === 'error');
-        } else if (currentFilter === 'working') {
-            filteredLinks = data.links.filter(link => link.status === 'working');
-        }
-        
-        // Build table
+        // Build table - ONLY show broken links
         const $tbody = $('#links-tbody');
         $tbody.empty();
         
-        if (filteredLinks.length === 0) {
-            $tbody.append('<tr><td colspan="4" style="text-align:center;">No links found for this filter</td></tr>');
+        const brokenLinks = data.broken_links || [];
+        
+        if (brokenLinks.length === 0) {
+            $tbody.append('<tr><td colspan="5" style="text-align:center; padding: 40px; color: #10b981;"><strong>✓ No broken links found! All links are working perfectly.</strong></td></tr>');
         } else {
-            filteredLinks.forEach(function(link) {
+            brokenLinks.forEach(function(link) {
                 let statusBadge, statusClass;
                 
                 switch(link.status) {
-                    case 'working':
-                        statusBadge = '✓ Working';
-                        statusClass = 'working';
-                        break;
                     case 'broken':
                         statusBadge = '✗ Broken';
                         statusClass = 'broken';
-                        break;
-                    case 'redirect':
-                        statusBadge = '↻ Redirect';
-                        statusClass = 'warning';
                         break;
                     case 'error':
                         statusBadge = '⚠ Error';
                         statusClass = 'warning';
                         break;
+                    case 'redirect':
+                        statusBadge = '↻ Redirect';
+                        statusClass = 'warning';
+                        break;
                     default:
-                        statusBadge = '? Unknown';
-                        statusClass = '';
+                        statusBadge = '✗ Broken';
+                        statusClass = 'broken';
                 }
                 
                 const row = `
                     <tr>
-                        <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis;">
+                        <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis;">
                             <a href="${escapeHtml(link.url)}" target="_blank" rel="noopener" style="color: #2563eb;">
-                                ${escapeHtml(truncateUrl(link.url, 50))}
+                                ${escapeHtml(truncateUrl(link.url, 45))}
                             </a>
                         </td>
-                        <td>${escapeHtml(truncate(link.anchor_text, 40))}</td>
+                        <td>${escapeHtml(truncate(link.anchor_text, 30))}</td>
                         <td><span class="status-badge ${statusClass}">${statusBadge}</span></td>
                         <td>
                             <strong>${link.status_code || 'N/A'}</strong>
                             <br/>
-                            <small style="color: #6b7280;">${escapeHtml(link.status_text)}</small>
-                            ${link.response_time ? `<br/><small style="color: #6b7280;">${link.response_time}ms</small>` : ''}
+                            <small style="color: #9ca3af;">${escapeHtml(link.status_text)}</small>
+                            ${link.response_time ? `<br/><small style="color: #9ca3af;">${link.response_time}ms</small>` : ''}
+                        </td>
+                        <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis;">
+                            <a href="${escapeHtml(link.found_on_page)}" target="_blank" rel="noopener" style="color: #6b7280; font-size: 0.875rem;">
+                                ${escapeHtml(truncateUrl(link.found_on_page, 35))}
+                            </a>
                         </td>
                     </tr>
                 `;
@@ -255,15 +417,17 @@
     }
     
     /**
-     * Export results to CSV
+     * Export results to CSV (broken links only)
      */
     function exportToCSV() {
         if (!currentResults) return;
         
-        let csv = 'URL,Anchor Text,Status,Status Code,Status Text,Response Time (ms)\n';
+        let csv = 'URL,Anchor Text,Status,Status Code,Status Text,Response Time (ms),Found On Page\n';
         
-        currentResults.links.forEach(function(link) {
-            csv += `"${link.url}","${link.anchor_text}","${link.status}",${link.status_code || 'N/A'},"${link.status_text}",${link.response_time || 'N/A'}\n`;
+        const brokenLinks = currentResults.broken_links || [];
+        
+        brokenLinks.forEach(function(link) {
+            csv += `"${link.url}","${link.anchor_text}","${link.status}",${link.status_code || 'N/A'},"${link.status_text}",${link.response_time || 'N/A'},"${link.found_on_page}"\n`;
         });
         
         // Download

@@ -18,9 +18,182 @@ if (!defined('ABSPATH')) {
 
 class Link_Checker
 {
+	/**
+	 * Social media domains to exclude from checking
+	 *
+	 * @var array
+	 * @since 1.0.0
+	 */
+	private $social_domains = [
+		'facebook.com',
+		'fb.com',
+		'fb.me',
+		'twitter.com',
+		'x.com',
+		't.co',
+		'instagram.com',
+		'instagr.am',
+		'linkedin.com',
+		'lnkd.in',
+		'youtube.com',
+		'youtu.be',
+		'pinterest.com',
+		'pin.it',
+		'tiktok.com',
+		'snapchat.com',
+		'reddit.com',
+		'redd.it'
+	];
 
 	/**
-	 * Check all links on a page
+	 * Crawl entire website and check all links
+	 *
+	 * @param string $start_url Starting URL
+	 * @param string $job_id Unique job ID for progress tracking
+	 * @return array Crawl results
+	 * @since 1.0.0
+	 */
+	public function crawl_website(string $start_url, string $job_id): array
+	{
+		$start_time = microtime(true);
+
+		// Initialize crawl state
+		$visited_urls = [];
+		$crawl_queue = [$start_url];
+		$all_checked_links = [];
+		$broken_links = [];
+		$pages_crawled = 0;
+		$base_domain = $this->get_base_domain($start_url);
+
+		// Configuration
+		$max_pages = (int) get_option('seo_tools_max_pages_crawl', 1000);
+		$max_depth = (int) get_option('seo_tools_max_crawl_depth', 10);
+
+		// Initialize progress
+		$this->update_progress($job_id, [
+			'status' => 'scanning',
+			'pages_crawled' => 0,
+			'links_checked' => 0,
+			'broken_links_found' => 0,
+			'start_time' => $start_time,
+			'cancel_requested' => false
+		]);
+
+		// Crawl loop
+		while (!empty($crawl_queue) && $pages_crawled < $max_pages) {
+			// Check for cancel request
+			if ($this->is_cancel_requested($job_id)) {
+				return [
+					'success' => false,
+					'error' => 'Scan cancelled by user',
+					'code' => 'CANCELLED'
+				];
+			}
+
+			// Get next URL from queue
+			$current_url = array_shift($crawl_queue);
+
+			// Normalize for comparison
+			$normalized_url = $this->normalize_url_for_comparison($current_url);
+
+			// Skip if already visited
+			if (in_array($normalized_url, $visited_urls, true)) {
+				continue;
+			}
+
+			// Check depth
+			$depth = $this->calculate_depth($current_url, $start_url);
+			if ($depth > $max_depth) {
+				continue;
+			}
+
+			// Mark as visited
+			$visited_urls[] = $normalized_url;
+
+			// Fetch page
+			$page_content = $this->fetch_page($current_url);
+
+			if (!$page_content['success']) {
+				$pages_crawled++;
+				continue;
+			}
+
+			// Extract links
+			$links = $this->extract_links_with_categorization($page_content['html'], $current_url, $base_domain);
+
+			// Add internal links to crawl queue
+			foreach ($links['internal'] as $internal_link) {
+				$normalized_internal = $this->normalize_url_for_comparison($internal_link['url']);
+				if (!in_array($normalized_internal, $visited_urls, true)) {
+					$crawl_queue[] = $internal_link['url'];
+				}
+			}
+
+			// Check all links (internal + external)
+			$links_to_check = array_merge($links['internal'], $links['external']);
+
+			foreach ($links_to_check as $link) {
+				// Check link status
+				$timeout = (int) get_option('seo_tools_link_timeout', 5);
+				$result = $this->check_single_link($link['url'], $timeout);
+
+				$checked_link = [
+					'url' => $link['url'],
+					'anchor_text' => $link['anchor_text'],
+					'status' => $result['status'],
+					'status_code' => $result['status_code'],
+					'status_text' => $result['status_text'],
+					'response_time' => $result['response_time'],
+					'found_on_page' => $current_url
+				];
+
+				$all_checked_links[] = $checked_link;
+
+				// Track broken links
+				if ($result['status'] === 'broken' || $result['status'] === 'error') {
+					$broken_links[] = $checked_link;
+				}
+			}
+
+			$pages_crawled++;
+
+			// Update progress
+			$elapsed_time = (int) (microtime(true) - $start_time);
+			$this->update_progress($job_id, [
+				'status' => 'scanning',
+				'pages_crawled' => $pages_crawled,
+				'links_checked' => count($all_checked_links),
+				'broken_links_found' => count($broken_links),
+				'elapsed_time' => $elapsed_time,
+				'current_page' => $current_url
+			]);
+		}
+
+		// Calculate final stats
+		$scan_time = round(microtime(true) - $start_time, 2);
+		$working_links = count($all_checked_links) - count($broken_links);
+
+		// Update final progress
+		$this->update_progress($job_id, [
+			'status' => 'completed',
+			'pages_crawled' => $pages_crawled,
+			'links_checked' => count($all_checked_links),
+			'broken_links_found' => count($broken_links)
+		]);
+
+		return [
+			'success' => true,
+			'total_links_checked' => count($all_checked_links),
+			'working_links' => $working_links,
+			'broken_links_count' => count($broken_links),
+			'pages_crawled' => $pages_crawled,
+			'scan_time' => $scan_time,
+			'broken_links' => $broken_links
+		];
+	}
+
+	/**
+	 * Check all links on a page (legacy method - kept for backward compatibility)
 	 *
 	 * @param string $url Page URL to check
 	 * @return array Check results
@@ -338,5 +511,239 @@ class Link_Checker
 		];
 
 		return $statuses[$code] ?? 'Unknown Status';
+	}
+
+	/**
+	 * Extract links with categorization (internal vs external)
+	 *
+	 * @param string $html HTML content
+	 * @param string $base_url Base URL for resolving relative links
+	 * @param string $base_domain Base domain for comparison
+	 * @return array Categorized links
+	 * @since 1.0.0
+	 */
+	private function extract_links_with_categorization(string $html, string $base_url, string $base_domain): array
+	{
+		$links = $this->extract_links($html, $base_url);
+
+		$internal = [];
+		$external = [];
+
+		foreach ($links as $link) {
+			// Skip social media links
+			if ($this->is_social_link($link['url'])) {
+				continue;
+			}
+
+			// Categorize as internal or external
+			if ($this->is_internal_link($link['url'], $base_domain)) {
+				$internal[] = $link;
+			} else {
+				$external[] = $link;
+			}
+		}
+
+		return [
+			'internal' => $internal,
+			'external' => $external
+		];
+	}
+
+	/**
+	 * Check if URL is a social media link
+	 *
+	 * @param string $url URL to check
+	 * @return bool True if social media link
+	 * @since 1.0.0
+	 */
+	private function is_social_link(string $url): bool
+	{
+		$parsed = parse_url($url);
+
+		if (!isset($parsed['host'])) {
+			return false;
+		}
+
+		$host = strtolower($parsed['host']);
+
+		// Remove www. prefix for comparison
+		$host = preg_replace('/^www\./i', '', $host);
+
+		// Check against social domains
+		foreach ($this->social_domains as $social_domain) {
+			if ($host === $social_domain || strpos($host, '.' . $social_domain) !== false) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Check if URL is internal (same domain)
+	 *
+	 * @param string $url URL to check
+	 * @param string $base_domain Base domain
+	 * @return bool True if internal
+	 * @since 1.0.0
+	 */
+	private function is_internal_link(string $url, string $base_domain): bool
+	{
+		$link_domain = $this->get_base_domain($url);
+
+		return $link_domain === $base_domain;
+	}
+
+	/**
+	 * Get base domain from URL (handles www normalization)
+	 *
+	 * @param string $url URL
+	 * @return string Base domain
+	 * @since 1.0.0
+	 */
+	private function get_base_domain(string $url): string
+	{
+		$parsed = parse_url($url);
+
+		if (!isset($parsed['host'])) {
+			return '';
+		}
+
+		$host = strtolower($parsed['host']);
+
+		// Remove www. prefix for normalization
+		$host = preg_replace('/^www\./i', '', $host);
+
+		return $host;
+	}
+
+	/**
+	 * Normalize URL for comparison (remove fragment, normalize www)
+	 *
+	 * @param string $url URL to normalize
+	 * @return string Normalized URL
+	 * @since 1.0.0
+	 */
+	private function normalize_url_for_comparison(string $url): string
+	{
+		$parsed = parse_url($url);
+
+		if (!$parsed) {
+			return $url;
+		}
+
+		// Rebuild URL without fragment
+		$normalized = '';
+
+		if (isset($parsed['scheme'])) {
+			$normalized .= $parsed['scheme'] . '://';
+		}
+
+		if (isset($parsed['host'])) {
+			// Normalize www
+			$host = strtolower($parsed['host']);
+			$host = preg_replace('/^www\./i', '', $host);
+			$normalized .= $host;
+		}
+
+		if (isset($parsed['port'])) {
+			$normalized .= ':' . $parsed['port'];
+		}
+
+		if (isset($parsed['path'])) {
+			$normalized .= $parsed['path'];
+		}
+
+		if (isset($parsed['query'])) {
+			$normalized .= '?' . $parsed['query'];
+		}
+
+		// Don't include fragment (#section)
+
+		return $normalized;
+	}
+
+	/**
+	 * Calculate depth of URL from start URL
+	 *
+	 * @param string $url Current URL
+	 * @param string $start_url Start URL
+	 * @return int Depth level
+	 * @since 1.0.0
+	 */
+	private function calculate_depth(string $url, string $start_url): int
+	{
+		$start_path = parse_url($start_url, PHP_URL_PATH) ?: '/';
+		$current_path = parse_url($url, PHP_URL_PATH) ?: '/';
+
+		// Count path segments difference
+		$start_segments = array_filter(explode('/', trim($start_path, '/')));
+		$current_segments = array_filter(explode('/', trim($current_path, '/')));
+
+		// Simple depth calculation: difference in path segments
+		return abs(count($current_segments) - count($start_segments));
+	}
+
+	/**
+	 * Update scan progress in transient
+	 *
+	 * @param string $job_id Job ID
+	 * @param array $progress Progress data
+	 * @return void
+	 * @since 1.0.0
+	 */
+	private function update_progress(string $job_id, array $progress): void
+	{
+		$transient_key = 'seo_scan_progress_' . $job_id;
+		set_transient($transient_key, $progress, 3600); // 1 hour expiry
+	}
+
+	/**
+	 * Check if cancel has been requested
+	 *
+	 * @param string $job_id Job ID
+	 * @return bool True if cancel requested
+	 * @since 1.0.0
+	 */
+	private function is_cancel_requested(string $job_id): bool
+	{
+		$transient_key = 'seo_scan_progress_' . $job_id;
+		$progress = get_transient($transient_key);
+
+		return isset($progress['cancel_requested']) && $progress['cancel_requested'] === true;
+	}
+
+	/**
+	 * Get scan progress
+	 *
+	 * @param string $job_id Job ID
+	 * @return array|false Progress data or false if not found
+	 * @since 1.0.0
+	 */
+	public function get_scan_progress(string $job_id)
+	{
+		$transient_key = 'seo_scan_progress_' . $job_id;
+		return get_transient($transient_key);
+	}
+
+	/**
+	 * Cancel scan
+	 *
+	 * @param string $job_id Job ID
+	 * @return bool True if cancelled
+	 * @since 1.0.0
+	 */
+	public function cancel_scan(string $job_id): bool
+	{
+		$transient_key = 'seo_scan_progress_' . $job_id;
+		$progress = get_transient($transient_key);
+
+		if ($progress) {
+			$progress['cancel_requested'] = true;
+			set_transient($transient_key, $progress, 3600);
+			return true;
+		}
+
+		return false;
 	}
 }

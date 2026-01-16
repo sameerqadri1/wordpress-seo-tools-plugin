@@ -84,9 +84,12 @@ spl_autoload_register(function ($class) {
     $class_name = array_pop($parts);
     $directory = implode('/', $parts);
 
-    // Convert class name: Plugin -> class-plugin.php
-    // Convert from CamelCase to kebab-case with class- prefix
+    // Convert class name: Plugin -> class-plugin.php, Meta_Ajax -> class-meta-ajax.php
+    // Step 1: Replace underscores with hyphens
+    $class_name = str_replace('_', '-', $class_name);
+    // Step 2: Convert from CamelCase to kebab-case
     $class_name = strtolower(preg_replace('/([a-z])([A-Z])/', '$1-$2', $class_name));
+    // Step 3: Add class- prefix
     $file_name = 'class-' . $class_name . '.php';
 
     // Convert directory names: handle underscores in namespace parts

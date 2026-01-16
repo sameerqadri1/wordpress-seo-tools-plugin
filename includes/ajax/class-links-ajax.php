@@ -26,14 +26,14 @@ class Links_Ajax
 {
 
 	/**
-	 * Handle link checking request
+	 * Handle link checking request (full website crawl)
 	 *
 	 * @since 1.0.0
 	 */
 	public function handle_check_links(): void
 	{
-		// Set longer execution time for link checking
-		@set_time_limit(300);
+		// Set longer execution time for full website crawling
+		@set_time_limit(1800); // 30 minutes
 
 		// 1. Verify nonce
 		if (!check_ajax_referer('seo_links_nonce', 'nonce', false)) {
@@ -104,29 +104,12 @@ class Links_Ajax
 
 		$url = $url_validation['url'];
 
-		// 5. Check cache
-		$cache_key = $cache_manager->generate_cache_key('links', ['url' => $url]);
-		$cached_result = $cache_manager->get($cache_key);
+		// 5. Generate unique job ID
+		$job_id = uniqid('scan_', true);
 
-		if ($cached_result !== null) {
-			$logger->log_usage('link_checker', ['url' => $url], 'success', [
-				'cached' => true
-			]);
-
-			wp_send_json_success([
-				'total_links' => $cached_result['total_links'],
-				'broken_links' => $cached_result['broken_links'],
-				'working_links' => $cached_result['working_links'],
-				'links' => $cached_result['links'],
-				'scan_time' => $cached_result['scan_time'],
-				'cached' => true
-			]);
-			return;
-		}
-
-		// 6. Check links
+		// 6. Start crawl (synchronous with progress tracking)
 		$link_checker = new Link_Checker();
-		$result = $link_checker->check_page_links($url);
+		$result = $link_checker->crawl_website($url, $job_id);
 
 		if (!$result['success']) {
 			$logger->log_usage('link_checker', ['url' => $url], 'error', [
@@ -141,11 +124,13 @@ class Links_Ajax
 		}
 
 		// 7. Cache the result
+		$cache_key = $cache_manager->generate_cache_key('links', ['url' => $url]);
 		$cache_data = [
-			'total_links' => $result['total_links'],
-			'broken_links' => $result['broken_links'],
+			'total_links_checked' => $result['total_links_checked'],
+			'broken_links_count' => $result['broken_links_count'],
 			'working_links' => $result['working_links'],
-			'links' => $result['links'],
+			'broken_links' => $result['broken_links'],
+			'pages_crawled' => $result['pages_crawled'],
 			'scan_time' => $result['scan_time']
 		];
 
@@ -153,18 +138,107 @@ class Links_Ajax
 
 		// 8. Log success
 		$logger->log_usage('link_checker', ['url' => $url], 'success', [
-			'cached' => false,
-			'links_checked' => $result['total_links']
+			'pages_crawled' => $result['pages_crawled'],
+			'links_checked' => $result['total_links_checked'],
+			'broken_found' => $result['broken_links_count']
 		]);
 
 		// 9. Return response
 		wp_send_json_success([
-			'total_links' => $result['total_links'],
-			'broken_links' => $result['broken_links'],
+			'total_links_checked' => $result['total_links_checked'],
+			'broken_links_count' => $result['broken_links_count'],
 			'working_links' => $result['working_links'],
-			'links' => $result['links'],
+			'broken_links' => $result['broken_links'],
+			'pages_crawled' => $result['pages_crawled'],
 			'scan_time' => $result['scan_time'],
-			'cached' => false
+			'job_id' => $job_id
 		]);
+	}
+
+	/**
+	 * Get scan progress
+	 *
+	 * @since 1.0.0
+	 */
+	public function handle_get_scan_progress(): void
+	{
+		// Verify nonce
+		if (!check_ajax_referer('seo_links_nonce', 'nonce', false)) {
+			wp_send_json_error([
+				'message' => 'Security verification failed',
+				'code' => 'INVALID_NONCE'
+			]);
+			return;
+		}
+
+		$job_id = $_POST['job_id'] ?? '';
+
+		if (empty($job_id)) {
+			wp_send_json_error([
+				'message' => 'Job ID is required',
+				'code' => 'MISSING_JOB_ID'
+			]);
+			return;
+		}
+
+		$link_checker = new Link_Checker();
+		$progress = $link_checker->get_scan_progress($job_id);
+
+		if ($progress === false) {
+			wp_send_json_error([
+				'message' => 'Scan not found',
+				'code' => 'SCAN_NOT_FOUND'
+			]);
+			return;
+		}
+
+		wp_send_json_success([
+			'status' => $progress['status'] ?? 'scanning',
+			'pages_crawled' => $progress['pages_crawled'] ?? 0,
+			'links_checked' => $progress['links_checked'] ?? 0,
+			'broken_links_found' => $progress['broken_links_found'] ?? 0,
+			'elapsed_time' => $progress['elapsed_time'] ?? 0
+		]);
+	}
+
+	/**
+	 * Cancel scan
+	 *
+	 * @since 1.0.0
+	 */
+	public function handle_cancel_scan(): void
+	{
+		// Verify nonce
+		if (!check_ajax_referer('seo_links_nonce', 'nonce', false)) {
+			wp_send_json_error([
+				'message' => 'Security verification failed',
+				'code' => 'INVALID_NONCE'
+			]);
+			return;
+		}
+
+		$job_id = $_POST['job_id'] ?? '';
+
+		if (empty($job_id)) {
+			wp_send_json_error([
+				'message' => 'Job ID is required',
+				'code' => 'MISSING_JOB_ID'
+			]);
+			return;
+		}
+
+		$link_checker = new Link_Checker();
+		$cancelled = $link_checker->cancel_scan($job_id);
+
+		if ($cancelled) {
+			wp_send_json_success([
+				'message' => 'Scan cancelled successfully'
+			]);
+		} else {
+			wp_send_json_error([
+				'message' => 'Failed to cancel scan',
+				'code' => 'CANCEL_FAILED'
+			]);
+		}
 	}
 }

@@ -38,16 +38,16 @@ if (!defined('ABSPATH')) {
 		<form id="link-checker-form">
 			<div class="form-group">
 				<label for="check-url">
-					Enter URL to Check <span class="required">*</span>
+					Enter Website URL to Scan <span class="required">*</span>
 				</label>
 				<input type="url"
 					id="check-url"
 					name="url"
 					class="form-control"
-					placeholder="https://example.com/page"
+					placeholder="https://example.com"
 					required />
 				<p class="form-help">
-					We'll scan this page and check all links (up to <?php echo esc_html(get_option('seo_tools_max_links_check', 50)); ?> links)
+					We'll crawl your entire website (up to <?php echo esc_html(get_option('seo_tools_max_pages_crawl', 1000)); ?> pages) and check all links for broken ones.
 				</p>
 			</div>
 
@@ -58,29 +58,61 @@ if (!defined('ABSPATH')) {
 
 			<!-- Submit Button -->
 			<button type="submit" id="check-btn" class="btn-primary">
-				<span class="btn-text">Check Links</span>
-				<span class="btn-loader" style="display:none;">⏳ Scanning... This may take a minute</span>
+				<span class="btn-text">Start Scanning</span>
+				<span class="btn-loader" style="display:none;">⏳ Scanning website...</span>
 			</button>
 		</form>
 	</div>
 
+	<!-- Progress Display -->
+	<div id="progress-display" class="progress-display-card" style="display:none;">
+		<h3>⏳ Scanning in progress...</h3>
+		<div class="progress-stats">
+			<div class="progress-stat">
+				<span class="progress-icon">📄</span>
+				<span class="progress-label">Pages crawled:</span>
+				<strong id="pages-crawled">0</strong>
+			</div>
+			<div class="progress-stat">
+				<span class="progress-icon">🔗</span>
+				<span class="progress-label">Links checked:</span>
+				<strong id="links-checked">0</strong>
+			</div>
+			<div class="progress-stat">
+				<span class="progress-icon">✗</span>
+				<span class="progress-label">Broken links found:</span>
+				<strong id="broken-found">0</strong>
+			</div>
+			<div class="progress-stat">
+				<span class="progress-icon">⏱️</span>
+				<span class="progress-label">Elapsed time:</span>
+				<strong id="elapsed-time">0s</strong>
+			</div>
+		</div>
+		<button type="button" id="cancel-scan-btn" class="btn-secondary">Cancel Scan</button>
+	</div>
+
 	<!-- Results Section -->
 	<div id="link-results" class="tool-results-card" style="display:none;">
-		<h2>🔍 Link Check Results</h2>
+		<h2>🔍 Scan Complete</h2>
 
 		<!-- Summary Stats -->
 		<div class="stats-row">
 			<div class="stat-box stat-total">
 				<div class="stat-value" id="total-links">0</div>
-				<div class="stat-label">Total Links</div>
+				<div class="stat-label">Total Links Checked</div>
 			</div>
 			<div class="stat-box stat-working">
 				<div class="stat-value" id="working-links">0</div>
-				<div class="stat-label">✓ Working</div>
+				<div class="stat-label">✓ Links Passed</div>
 			</div>
 			<div class="stat-box stat-broken">
 				<div class="stat-value" id="broken-links">0</div>
-				<div class="stat-label">✗ Broken</div>
+				<div class="stat-label">✗ Broken Links</div>
+			</div>
+			<div class="stat-box">
+				<div class="stat-value" id="pages-crawled-stat">0</div>
+				<div class="stat-label">Pages Crawled</div>
 			</div>
 			<div class="stat-box">
 				<div class="stat-value" id="scan-time">0s</div>
@@ -88,20 +120,14 @@ if (!defined('ABSPATH')) {
 			</div>
 		</div>
 
-		<!-- Status Filter -->
-		<div class="filter-tabs">
-			<button type="button" class="filter-tab active" data-status="all">
-				All Links
-			</button>
-			<button type="button" class="filter-tab" data-status="broken">
-				Broken Only
-			</button>
-			<button type="button" class="filter-tab" data-status="working">
-				Working Only
-			</button>
+		<!-- Results Table (Broken Links Only) -->
+		<div class="results-section">
+			<h3>Broken Links Found</h3>
+			<p style="color: #6b7280; margin-bottom: 20px;">
+				Only broken links are displayed below. All other links passed successfully.
+			</p>
 		</div>
 
-		<!-- Results Table -->
 		<div class="results-table-wrapper">
 			<table class="results-table">
 				<thead>
@@ -110,6 +136,7 @@ if (!defined('ABSPATH')) {
 						<th>Anchor Text</th>
 						<th>Status</th>
 						<th>Response</th>
+						<th>Found On Page</th>
 					</tr>
 				</thead>
 				<tbody id="links-tbody">
@@ -120,10 +147,10 @@ if (!defined('ABSPATH')) {
 
 		<div class="result-actions">
 			<button type="button" id="check-another" class="btn-secondary">
-				Check Another URL
+				Scan Another Website
 			</button>
 			<button type="button" id="export-csv" class="btn-secondary">
-				📥 Export Report (CSV)
+				📥 Export Broken Links (CSV)
 			</button>
 		</div>
 	</div>
@@ -135,18 +162,27 @@ if (!defined('ABSPATH')) {
 	<div class="tool-info-card">
 		<h2>💡 How to Use This Tool</h2>
 		<ol class="info-list">
-			<li><strong>Enter URL:</strong> Paste the URL of the page you want to check.</li>
-			<li><strong>Start Scan:</strong> Click "Check Links" and wait while we analyze all links.</li>
-			<li><strong>Review Results:</strong> See which links are working, broken, or redirecting.</li>
+			<li><strong>Enter Website URL:</strong> Paste the homepage or any page URL of your website.</li>
+			<li><strong>Start Scan:</strong> Click "Start Scanning" and wait while we crawl your entire website.</li>
+			<li><strong>Monitor Progress:</strong> Watch real-time updates of pages crawled and links checked.</li>
+			<li><strong>Review Results:</strong> See all broken links with details about where they were found.</li>
 			<li><strong>Fix Issues:</strong> Update or remove broken links to improve your site.</li>
 			<li><strong>Export Report:</strong> Download a CSV file for your records.</li>
 		</ol>
 
+		<h3>🔍 What Gets Scanned?</h3>
+		<ul class="info-list">
+			<li><strong>Full Website Crawl:</strong> Up to 1,000 pages on your domain</li>
+			<li><strong>Internal Links:</strong> All links within your website</li>
+			<li><strong>External Links:</strong> All links to other websites</li>
+			<li><strong>Excluded:</strong> Social media links (Facebook, Twitter, etc.)</li>
+			<li><strong>Results:</strong> Only broken links are displayed</li>
+		</ul>
+
 		<h3>🔴 Understanding Status Codes</h3>
 		<ul class="info-list">
-			<li><strong>200 OK:</strong> Link is working perfectly</li>
-			<li><strong>301/302:</strong> Redirect (update link to final destination)</li>
 			<li><strong>404:</strong> Page not found (broken link - fix immediately)</li>
+			<li><strong>403:</strong> Forbidden (access denied)</li>
 			<li><strong>500:</strong> Server error (temporary issue or broken)</li>
 			<li><strong>Timeout:</strong> Link didn't respond (check URL or server)</li>
 		</ul>
