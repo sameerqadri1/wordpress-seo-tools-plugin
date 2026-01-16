@@ -1,0 +1,13 @@
+/**
+ * SEO Marketing Tools - Admin Styles
+ * 
+ * @package SEO_Marketing_Tools
+ * @since 1.0.0
+ */
+
+/* Admin page styles are already in settings-page.php inline styles */
+/* This file can be used for additional admin customizations */
+
+.seo-tools-admin-container {
+    margin-top: 20px;
+}
