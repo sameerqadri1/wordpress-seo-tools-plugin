@@ -181,43 +181,48 @@
      */
     function analyzeNGrams(words, n, totalWords) {
         const ngrams = {};
-        const stopWords = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'as', 'is', 'was', 'are', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'can', 'it', 'this', 'that', 'these', 'those'];
         
-        for (let i = 0; i <= words.length - n; i++) {
+        // Stop words list - words to exclude from analysis
+        const stopWords = [
+            "is", "am", "are", "was", "were", "be", "been", "being",
+            "the", "a", "an",
+            "what", "how", "where", "when", "why", "which", "who",
+            "this", "that", "these", "those",
+            "and", "or", "but", "if", "then",
+            "in", "on", "at", "to", "from", "by", "for", "with", "of"
+        ];
+        
+        // Filter words: remove stop words and words < 3 characters
+        const filteredWords = words.filter(word => {
+            return word.length >= 3 && !stopWords.includes(word);
+        });
+        
+        // Calculate total valid words for density calculation
+        const validWordCount = filteredWords.length;
+        
+        if (validWordCount === 0) {
+            return [];
+        }
+        
+        // Build n-grams from filtered words
+        for (let i = 0; i <= filteredWords.length - n; i++) {
             const phrase = [];
-            let skipPhrase = false;
             
             for (let j = 0; j < n; j++) {
-                const word = words[i + j];
-                
-                // Skip if word is too short (except for n=1)
-                if (word.length < 2 && n === 1) {
-                    skipPhrase = true;
-                    break;
-                }
-                
-                phrase.push(word);
+                phrase.push(filteredWords[i + j]);
             }
-            
-            if (skipPhrase) continue;
             
             const phraseStr = phrase.join(' ');
-            
-            // Skip if phrase is only stop words (for n > 1)
-            if (n > 1) {
-                const allStopWords = phrase.every(w => stopWords.includes(w));
-                if (allStopWords) continue;
-            }
-            
             ngrams[phraseStr] = (ngrams[phraseStr] || 0) + 1;
         }
         
         // Convert to array and sort by count
+        // Density is calculated based on filtered words, not original total
         const sorted = Object.entries(ngrams)
             .map(([phrase, count]) => ({
                 phrase,
                 count,
-                density: ((count / totalWords) * 100).toFixed(2)
+                density: ((count / validWordCount) * 100).toFixed(2)
             }))
             .sort((a, b) => b.count - a.count)
             .slice(0, 50); // Top 50
