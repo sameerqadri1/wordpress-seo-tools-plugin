@@ -107,52 +107,56 @@ class Links_Ajax
 		// 5. Generate unique job ID
 		$job_id = uniqid('scan_', true);
 
-		// 6. Start crawl (synchronous with progress tracking)
+		// 6. Return job_id immediately (don't wait for crawl to complete)
+		wp_send_json_success([
+			'job_id' => $job_id,
+			'message' => 'Scan started'
+		]);
+
+		// 7. Start crawl in background (after response sent)
+		// Use fastcgi_finish_request if available to continue processing after response
+		if (function_exists('fastcgi_finish_request')) {
+			fastcgi_finish_request();
+		}
+
+		// Start the crawl
 		$link_checker = new Link_Checker();
 		$result = $link_checker->crawl_website($url, $job_id);
 
-		if (!$result['success']) {
+		// Store final result in transient for retrieval
+		$transient_key = 'seo_scan_result_' . $job_id;
+
+		if ($result['success']) {
+			// Cache the result
+			$cache_key = $cache_manager->generate_cache_key('links', ['url' => $url]);
+			$cache_data = [
+				'total_links_checked' => $result['total_links_checked'],
+				'broken_links_count' => $result['broken_links_count'],
+				'working_links' => $result['working_links'],
+				'broken_links' => $result['broken_links'],
+				'pages_crawled' => $result['pages_crawled'],
+				'scan_time' => $result['scan_time']
+			];
+
+			$cache_manager->set($cache_key, $cache_data);
+
+			// Store final result
+			set_transient($transient_key, $result, 3600);
+
+			// Log success
+			$logger->log_usage('link_checker', ['url' => $url], 'success', [
+				'pages_crawled' => $result['pages_crawled'],
+				'links_checked' => $result['total_links_checked'],
+				'broken_found' => $result['broken_links_count']
+			]);
+		} else {
+			// Store error result
+			set_transient($transient_key, $result, 3600);
+
 			$logger->log_usage('link_checker', ['url' => $url], 'error', [
 				'error_message' => $result['error'] ?? 'Unknown error'
 			]);
-
-			wp_send_json_error([
-				'message' => $result['error'] ?? 'Failed to check links',
-				'code' => $result['code'] ?? 'CHECK_FAILED'
-			]);
-			return;
 		}
-
-		// 7. Cache the result
-		$cache_key = $cache_manager->generate_cache_key('links', ['url' => $url]);
-		$cache_data = [
-			'total_links_checked' => $result['total_links_checked'],
-			'broken_links_count' => $result['broken_links_count'],
-			'working_links' => $result['working_links'],
-			'broken_links' => $result['broken_links'],
-			'pages_crawled' => $result['pages_crawled'],
-			'scan_time' => $result['scan_time']
-		];
-
-		$cache_manager->set($cache_key, $cache_data);
-
-		// 8. Log success
-		$logger->log_usage('link_checker', ['url' => $url], 'success', [
-			'pages_crawled' => $result['pages_crawled'],
-			'links_checked' => $result['total_links_checked'],
-			'broken_found' => $result['broken_links_count']
-		]);
-
-		// 9. Return response
-		wp_send_json_success([
-			'total_links_checked' => $result['total_links_checked'],
-			'broken_links_count' => $result['broken_links_count'],
-			'working_links' => $result['working_links'],
-			'broken_links' => $result['broken_links'],
-			'pages_crawled' => $result['pages_crawled'],
-			'scan_time' => $result['scan_time'],
-			'job_id' => $job_id
-		]);
 	}
 
 	/**
@@ -240,5 +244,45 @@ class Links_Ajax
 				'code' => 'CANCEL_FAILED'
 			]);
 		}
+	}
+
+	/**
+	 * Get final scan results
+	 *
+	 * @since 1.0.0
+	 */
+	public function handle_get_scan_results(): void
+	{
+		// Verify nonce
+		if (!check_ajax_referer('seo_links_nonce', 'nonce', false)) {
+			wp_send_json_error([
+				'message' => 'Security verification failed',
+				'code' => 'INVALID_NONCE'
+			]);
+			return;
+		}
+
+		$job_id = $_POST['job_id'] ?? '';
+
+		if (empty($job_id)) {
+			wp_send_json_error([
+				'message' => 'Job ID is required',
+				'code' => 'MISSING_JOB_ID'
+			]);
+			return;
+		}
+
+		$transient_key = 'seo_scan_result_' . $job_id;
+		$result = get_transient($transient_key);
+
+		if ($result === false) {
+			wp_send_json_error([
+				'message' => 'Results not found. Scan may still be in progress.',
+				'code' => 'RESULTS_NOT_FOUND'
+			]);
+			return;
+		}
+
+		wp_send_json_success($result);
 	}
 }

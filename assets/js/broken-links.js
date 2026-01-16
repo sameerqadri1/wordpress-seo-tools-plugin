@@ -166,30 +166,20 @@
                 'g-recaptcha-response': recaptchaResponse
             },
             success: function(response) {
-                if (response.success) {
-                    stopTimer();
-                    stopProgressPolling();
-                    
-                    currentResults = {
-                        total_links_checked: response.data.total_links_checked,
-                        working_links: response.data.working_links,
-                        broken_links_count: response.data.broken_links_count,
-                        broken_links: response.data.broken_links,
-                        pages_crawled: response.data.pages_crawled,
-                        scan_time: response.data.scan_time
-                    };
-                    
-                    displayResults(currentResults);
-                    loadRateLimitStatus(); // Refresh rate limit
-                    
-                    $('#progress-display').hide();
-                    $('#cancel-scan-btn').hide();
+                if (response.success && response.data.job_id) {
+                    // Start progress polling immediately
+                    currentJobId = response.data.job_id;
+                    startProgressPolling(currentJobId);
                 } else {
                     stopTimer();
                     stopProgressPolling();
-                    showError(response.data.message || 'Failed to check links');
+                    showError(response.data.message || 'Failed to start scan');
                     $('#progress-display').hide();
                     $('#cancel-scan-btn').hide();
+                    
+                    $btn.prop('disabled', false);
+                    $btn.find('.btn-text').show();
+                    $btn.find('.btn-loader').hide();
                 }
             },
             error: function(xhr) {
@@ -199,15 +189,17 @@
                 $('#cancel-scan-btn').hide();
                 
                 if (xhr.status === 504) {
-                    showError('Request timeout. The scan took too long. Please try a smaller website.');
+                    showError('Request timeout. Please try again.');
                 } else {
                     showError('Network error. Please try again.');
                 }
-            },
-            complete: function() {
+                
                 $btn.prop('disabled', false);
                 $btn.find('.btn-text').show();
                 $btn.find('.btn-loader').hide();
+            },
+            complete: function() {
+                // Don't re-enable button here - wait for scan to complete
                 resetRecaptcha();
             }
         });
@@ -287,8 +279,28 @@
             },
             success: function(response) {
                 if (response.success) {
-                    updateProgressDisplay(response.data);
+                    if (response.data.status === 'completed') {
+                        // Scan complete, get final results
+                        getFinalResults();
+                    } else if (response.data.status === 'cancelled') {
+                        stopTimer();
+                        stopProgressPolling();
+                        showError('Scan cancelled by user.');
+                        $('#progress-display').hide();
+                        $('#cancel-scan-btn').hide();
+                        
+                        const $btn = $('#check-btn');
+                        $btn.prop('disabled', false);
+                        $btn.find('.btn-text').show();
+                        $btn.find('.btn-loader').hide();
+                    } else {
+                        // Update progress display
+                        updateProgressDisplay(response.data);
+                    }
                 }
+            },
+            error: function() {
+                // Continue polling even on error (might be temporary)
             }
         });
     }
@@ -300,6 +312,82 @@
         $('#pages-crawled').text(progress.pages_crawled || 0);
         $('#links-checked').text(progress.links_checked || 0);
         $('#broken-found').text(progress.broken_links_found || 0);
+        
+        // Update elapsed time from progress if available
+        if (progress.elapsed_time) {
+            const elapsed = progress.elapsed_time;
+            const minutes = Math.floor(elapsed / 60);
+            const seconds = elapsed % 60;
+            
+            let timeStr = '';
+            if (minutes > 0) {
+                timeStr = minutes + 'm ' + seconds + 's';
+            } else {
+                timeStr = seconds + 's';
+            }
+            
+            $('#elapsed-time').text(timeStr);
+        }
+    }
+    
+    /**
+     * Get final scan results
+     */
+    function getFinalResults() {
+        $.ajax({
+            url: seoToolsConfig.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'seo_get_scan_results',
+                nonce: seoToolsConfig.nonces.links,
+                job_id: currentJobId
+            },
+            success: function(response) {
+                if (response.success) {
+                    stopTimer();
+                    stopProgressPolling();
+                    
+                    if (response.data.success) {
+                        currentResults = {
+                            total_links_checked: response.data.total_links_checked,
+                            working_links: response.data.working_links,
+                            broken_links_count: response.data.broken_links_count,
+                            broken_links: response.data.broken_links,
+                            pages_crawled: response.data.pages_crawled,
+                            scan_time: response.data.scan_time
+                        };
+                        
+                        displayResults(currentResults);
+                        loadRateLimitStatus();
+                        
+                        $('#progress-display').hide();
+                        $('#cancel-scan-btn').hide();
+                        
+                        // Re-enable button
+                        const $btn = $('#check-btn');
+                        $btn.prop('disabled', false);
+                        $btn.find('.btn-text').show();
+                        $btn.find('.btn-loader').hide();
+                    } else {
+                        showError(response.data.error || 'Scan failed');
+                        $('#progress-display').hide();
+                        $('#cancel-scan-btn').hide();
+                        
+                        const $btn = $('#check-btn');
+                        $btn.prop('disabled', false);
+                        $btn.find('.btn-text').show();
+                        $btn.find('.btn-loader').hide();
+                    }
+                } else {
+                    // Results not ready yet, continue polling
+                    setTimeout(pollProgress, 2000);
+                }
+            },
+            error: function() {
+                // Retry getting results
+                setTimeout(getFinalResults, 2000);
+            }
+        });
     }
     
     /**
