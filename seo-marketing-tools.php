@@ -89,8 +89,13 @@ spl_autoload_register(function ($class) {
     $class_name = strtolower(preg_replace('/([a-z])([A-Z])/', '$1-$2', $class_name));
     $file_name = 'class-' . $class_name . '.php';
 
-    // Convert directory names to lowercase
-    $directory = strtolower($directory);
+    // Convert directory names: handle underscores in namespace parts
+    // Public_Facing -> public (remove underscore, then lowercase)
+    if (!empty($directory)) {
+        // Remove underscores from directory parts, then convert to lowercase
+        $directory = str_replace('_', '', $directory);
+        $directory = strtolower($directory);
+    }
 
     // Build full file path
     $file = $base_dir . ($directory ? $directory . '/' : '') . $file_name;
