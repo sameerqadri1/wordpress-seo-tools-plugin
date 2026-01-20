@@ -272,11 +272,14 @@ class Scan_Lock_Manager
 	 */
 	public function can_scan_url(string $url): array
 	{
+		// Max scans per URL per user per day
+		$max_scans_per_url = 3;
+
 		// Normalize URL for consistent comparison
 		$normalized_url = $this->normalize_url_for_tracking($url);
 		$user_id = $this->get_user_identifier();
 
-		// Get scanned URLs for this user today
+		// Get scanned URLs for this user today (now stores url => count)
 		$scanned_urls_key = 'seo_scanned_urls_' . $user_id;
 		$scanned_urls = get_transient($scanned_urls_key);
 
@@ -284,19 +287,29 @@ class Scan_Lock_Manager
 			$scanned_urls = [];
 		}
 
-		// Check if this URL was already scanned
-		if (in_array($normalized_url, $scanned_urls, true)) {
+		// Check how many times this URL was scanned
+		$scan_count = $scanned_urls[$normalized_url] ?? 0;
+
+		if ($scan_count >= $max_scans_per_url) {
 			return [
 				'allowed' => false,
-				'message' => 'You have already scanned this website today. Please try a different URL or wait until tomorrow.',
-				'code' => 'URL_ALREADY_SCANNED'
+				'message' => sprintf(
+					'You have already scanned this website %d times today (maximum allowed). Please try a different URL or wait until tomorrow.',
+					$scan_count
+				),
+				'code' => 'URL_SCAN_LIMIT_REACHED'
 			];
 		}
 
+		// Calculate remaining scans for this URL
+		$remaining = $max_scans_per_url - $scan_count;
+
 		return [
 			'allowed' => true,
-			'message' => 'URL can be scanned',
-			'code' => 'OK'
+			'message' => sprintf('URL can be scanned (%d of %d scans remaining)', $remaining, $max_scans_per_url),
+			'code' => 'OK',
+			'remaining' => $remaining,
+			'scan_count' => $scan_count
 		];
 	}
 
@@ -312,7 +325,7 @@ class Scan_Lock_Manager
 		$normalized_url = $this->normalize_url_for_tracking($url);
 		$user_id = $this->get_user_identifier();
 
-		// Get existing scanned URLs
+		// Get existing scanned URLs (url => count format)
 		$scanned_urls_key = 'seo_scanned_urls_' . $user_id;
 		$scanned_urls = get_transient($scanned_urls_key);
 
@@ -320,9 +333,11 @@ class Scan_Lock_Manager
 			$scanned_urls = [];
 		}
 
-		// Add this URL to the list
-		if (!in_array($normalized_url, $scanned_urls, true)) {
-			$scanned_urls[] = $normalized_url;
+		// Increment scan count for this URL
+		if (!isset($scanned_urls[$normalized_url])) {
+			$scanned_urls[$normalized_url] = 1;
+		} else {
+			$scanned_urls[$normalized_url]++;
 		}
 
 		// Store until end of day (resets at midnight)
