@@ -18,6 +18,9 @@
     let totalBrokenLinks = 0;
     let estimatedTotalPages = 0;
     let autoContinueEnabled = true;
+    let estimatedProgressInterval = null;
+    let currentEstimatedProgress = 0;
+    let realProgressReceived = false;
     
     const STATE = {
         IDLE: 'idle',
@@ -197,6 +200,8 @@
         // Reset progress on first scan (not continuations)
         if (!currentResults) {
             resetProgressBar();
+            // Start estimated progress
+            startEstimatedProgress();
         }
         
         // Start timer
@@ -392,6 +397,9 @@
         autoContinueEnabled = false;
         currentState = STATE.CANCELLED;
         
+        // Stop estimated progress
+        stopEstimatedProgress();
+        
         // Abort current AJAX request
         if (currentAjaxRequest) {
             currentAjaxRequest.abort();
@@ -441,30 +449,86 @@
     }
     
     /**
-     * Update progress bar
+     * Start estimated progress (1-2% every 5-8 seconds, cap at 95%)
+     */
+    function startEstimatedProgress() {
+        // Start at 1%
+        currentEstimatedProgress = 1;
+        realProgressReceived = false;
+        updateProgressDisplay(1, '0/0 pages scanned (1%)');
+        
+        // Increment progress periodically
+        const incrementProgress = function() {
+            if (currentEstimatedProgress < 95 && !realProgressReceived) {
+                // Random increment: 1-2%
+                const increment = Math.random() < 0.5 ? 1 : 2;
+                currentEstimatedProgress = Math.min(currentEstimatedProgress + increment, 95);
+                
+                updateProgressDisplay(currentEstimatedProgress, `Scanning... (${currentEstimatedProgress}%)`);
+            }
+            
+            // Schedule next increment (random 5-8 seconds)
+            if (estimatedProgressInterval) {
+                const nextInterval = Math.floor(Math.random() * 3000) + 5000; // 5000-8000ms
+                estimatedProgressInterval = setTimeout(incrementProgress, nextInterval);
+            }
+        };
+        
+        // Start first increment after 5-8 seconds
+        const firstInterval = Math.floor(Math.random() * 3000) + 5000;
+        estimatedProgressInterval = setTimeout(incrementProgress, firstInterval);
+    }
+    
+    /**
+     * Stop estimated progress
+     */
+    function stopEstimatedProgress() {
+        if (estimatedProgressInterval) {
+            clearTimeout(estimatedProgressInterval);
+            estimatedProgressInterval = null;
+        }
+    }
+    
+    /**
+     * Update progress display (helper function)
+     */
+    function updateProgressDisplay(percentage, text) {
+        $('#progress-bar-fill').css('width', percentage + '%');
+        $('#progress-text').text(text);
+    }
+    
+    /**
+     * Update progress bar with real data
      */
     function updateProgressBar(data) {
+        realProgressReceived = true;
+        
         totalPagesScanned = data.pages_crawled || 0;
         totalLinksChecked = data.total_links_checked || 0;
         totalBrokenLinks = data.broken_links_count || 0;
         estimatedTotalPages = data.estimated_total_pages || totalPagesScanned;
         
-        // Calculate percentage
+        // Calculate real percentage
         let percentage = 0;
         if (estimatedTotalPages > 0) {
             percentage = Math.min(Math.round((totalPagesScanned / estimatedTotalPages) * 100), 99);
         }
         
-        // If scan is complete, show 100%
+        // If scan is complete, show 100% and stop estimated progress
         if (!data.has_more) {
             percentage = 100;
+            stopEstimatedProgress();
+        } else {
+            // Use the higher of real or estimated progress (prevents going backwards)
+            percentage = Math.max(percentage, currentEstimatedProgress);
+            currentEstimatedProgress = percentage;
+            
+            // Resume estimated progress for next chunk
+            realProgressReceived = false;
         }
         
         // Update progress bar
-        $('#progress-bar-fill').css('width', percentage + '%');
-        
-        // Update progress text
-        $('#progress-text').text(`${totalPagesScanned}/${estimatedTotalPages} pages scanned (${percentage}%)`);
+        updateProgressDisplay(percentage, `${totalPagesScanned}/${estimatedTotalPages} pages scanned (${percentage}%)`);
         
         // Update progress stats
         $('#progress-pages').text(totalPagesScanned);
@@ -476,10 +540,14 @@
      * Reset progress bar
      */
     function resetProgressBar() {
+        stopEstimatedProgress();
+        
         totalPagesScanned = 0;
         totalLinksChecked = 0;
         totalBrokenLinks = 0;
         estimatedTotalPages = 0;
+        currentEstimatedProgress = 0;
+        realProgressReceived = false;
         
         $('#progress-bar-fill').css('width', '0%');
         $('#progress-text').text('0/0 pages scanned (0%)');
