@@ -85,8 +85,26 @@
      * Initialize form submission
      */
     function initForm() {
+        // Handle scan mode changes
+        $('input[name="scan_mode"]').on('change', function() {
+            const mode = $(this).val();
+            if (mode === 'quick') {
+                $('#url-help-text').text('Enter the URL of the page you want to check (checks all links on that single page).');
+            } else {
+                $('#url-help-text').text('Enter your website homepage URL (we\'ll crawl your entire site up to 1,000 pages).');
+            }
+        });
+
         $('#link-checker-form').on('submit', function(e) {
             e.preventDefault();
+            
+            // Get scan mode
+            const scanMode = $('input[name="scan_mode"]:checked').val();
+            
+            if (!scanMode) {
+                showError('Please select a scan mode (Quick Scan or Full Site Audit)');
+                return;
+            }
             
             // Get URL
             const url = $('#check-url').val().trim();
@@ -112,7 +130,7 @@
             }
             
             // Check links
-            checkLinks(url, recaptchaResponse);
+            checkLinks(url, recaptchaResponse, scanMode);
         });
         
         // Check another button
@@ -143,9 +161,14 @@
     /**
      * Check links (synchronous)
      */
-    function checkLinks(url, recaptchaResponse) {
+    function checkLinks(url, recaptchaResponse, scanMode) {
         currentUrl = url;
         currentState = STATE.SCANNING;
+        
+        // Store scan mode for continuations
+        if (!scanMode) {
+            scanMode = $('input[name="scan_mode"]:checked').val() || 'full';
+        }
         
         const $btn = $('#check-btn');
         $btn.prop('disabled', true);
@@ -171,6 +194,7 @@
                 action: 'seo_check_links',
                 nonce: seoToolsConfig.nonces.links,
                 url: url,
+                scan_mode: scanMode,
                 'g-recaptcha-response': recaptchaResponse
             },
             success: function(response) {
@@ -218,7 +242,8 @@
             data: {
                 action: 'seo_check_links',
                 nonce: seoToolsConfig.nonces.links,
-                url: url
+                url: url,
+                scan_mode: 'full' // Continuations are always full mode
                 // No reCAPTCHA for continuations
             },
             success: function(response) {

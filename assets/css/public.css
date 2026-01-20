@@ -324,6 +324,60 @@ textarea.form-control {
     font-family: inherit;
 }
 
+/* Radio Button Group */
+.radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+.radio-option {
+    display: flex;
+    align-items: flex-start;
+    padding: 16px;
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius);
+    background: var(--bg-card);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.radio-option:hover {
+    border-color: var(--primary-color);
+    background: rgba(182, 0, 22, 0.05);
+}
+
+.radio-option input[type="radio"] {
+    margin-top: 4px;
+    margin-right: 12px;
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary-color);
+}
+
+.radio-option input[type="radio"]:checked ~ .radio-label {
+    color: var(--primary-color);
+}
+
+.radio-option:has(input[type="radio"]:checked) {
+    border-color: var(--primary-color);
+    background: rgba(182, 0, 22, 0.1);
+}
+
+.radio-label {
+    flex: 1;
+    color: var(--text-primary);
+    line-height: 1.5;
+}
+
+.radio-label strong {
+    display: block;
+    font-size: 1.05rem;
+    margin-bottom: 2px;
+}
+
 .char-count {
     float: right;
     font-size: 0.875rem;

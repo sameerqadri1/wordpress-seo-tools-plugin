@@ -196,6 +196,91 @@ class Link_Checker
 	}
 
 	/**
+	 * Check all links on a single page (Quick Scan mode)
+	 *
+	 * @param string $url Page URL to check
+	 * @param int $max_links Maximum number of links to check
+	 * @return array Check results
+	 * @since 1.0.0
+	 */
+	public function check_page_links(string $url, int $max_links = 100): array
+	{
+		$start_time = microtime(true);
+
+		// 1. Fetch page content
+		$page_content = $this->fetch_page($url);
+
+		if (!$page_content['success']) {
+			return $page_content;
+		}
+
+		// 2. Extract all links
+		$links = $this->extract_links($page_content['html'], $url);
+
+		if (empty($links)) {
+			return [
+				'success' => false,
+				'error' => 'No links found on the page',
+				'code' => 'NO_LINKS_FOUND'
+			];
+		}
+
+		// 3. Filter out social media links
+		$filtered_links = [];
+		foreach ($links as $link) {
+			if (!$this->is_social_link($link['url'])) {
+				$filtered_links[] = $link;
+			}
+		}
+
+		// 4. Limit number of links to check
+		if (count($filtered_links) > $max_links) {
+			$filtered_links = array_slice($filtered_links, 0, $max_links);
+		}
+
+		// 5. Check each link
+		$checked_links = [];
+		$broken_links = [];
+		$working_count = 0;
+
+		foreach ($filtered_links as $link) {
+			$result = $this->check_single_link($link['url'], 3);
+
+			$checked_link = [
+				'url' => $link['url'],
+				'anchor_text' => $link['anchor_text'],
+				'status' => $result['status'],
+				'status_code' => $result['status_code'],
+				'status_text' => $result['status_text'],
+				'response_time' => $result['response_time'],
+				'found_on_page' => $url
+			];
+
+			$checked_links[] = $checked_link;
+
+			if ($result['status'] === 'broken' || $result['status'] === 'error') {
+				$broken_links[] = $checked_link;
+			} else {
+				$working_count++;
+			}
+		}
+
+		$scan_time = round(microtime(true) - $start_time, 2);
+
+		return [
+			'success' => true,
+			'total_links_checked' => count($checked_links),
+			'broken_links_count' => count($broken_links),
+			'working_links' => $working_count,
+			'broken_links' => $broken_links,
+			'pages_crawled' => 1,
+			'scan_time' => $scan_time,
+			'has_more' => false,
+			'estimated_remaining' => 0
+		];
+	}
+
+	/**
 	 * Fetch page HTML
 	 *
 	 * @param string $url Page URL

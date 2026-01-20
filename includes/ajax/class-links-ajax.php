@@ -49,7 +49,18 @@ class Links_Ajax
 		$cache_manager = new Cache_Manager();
 		$logger = new Logger();
 
-		// 2. Validate URL
+		// 2. Get and validate scan mode
+		$scan_mode = $_POST['scan_mode'] ?? '';
+
+		if (!in_array($scan_mode, ['quick', 'full'], true)) {
+			wp_send_json_error([
+				'message' => 'Please select a scan mode',
+				'code' => 'MISSING_SCAN_MODE'
+			]);
+			return;
+		}
+
+		// 3. Validate URL
 		$url = $_POST['url'] ?? '';
 		$url_validation = $validator->validate_url($url);
 
@@ -64,13 +75,17 @@ class Links_Ajax
 
 		$url = $url_validation['url'];
 
-		// 3. Check if this is a continuation or new scan
+		// 4. Check if this is a continuation or new scan (full mode only)
 		$state_key = 'seo_scan_state_' . md5($url);
-		$resume_state = get_transient($state_key);
+		$resume_state = null;
 
-		// Convert false to null for strict type compatibility
-		if ($resume_state === false) {
-			$resume_state = null;
+		if ($scan_mode === 'full') {
+			$resume_state = get_transient($state_key);
+
+			// Convert false to null for strict type compatibility
+			if ($resume_state === false) {
+				$resume_state = null;
+			}
 		}
 
 		// For new scans (not continuations), verify reCAPTCHA and rate limit
@@ -116,9 +131,16 @@ class Links_Ajax
 			}
 		}
 
-		// 4. Run the crawl (synchronously) - reduced to 25 pages to prevent timeout
+		// 5. Run the scan based on mode
 		$link_checker = new Link_Checker();
-		$result = $link_checker->crawl_website($url, 25, $resume_state);
+
+		if ($scan_mode === 'quick') {
+			// Quick Scan: Single page, max 100 links
+			$result = $link_checker->check_page_links($url, 100);
+		} else {
+			// Full Site Audit: Crawl website, 50 pages per chunk
+			$result = $link_checker->crawl_website($url, 50, $resume_state);
+		}
 
 		if (!$result['success']) {
 			// Delete state on error
@@ -131,8 +153,8 @@ class Links_Ajax
 			return;
 		}
 
-		// 5. Save state if there's more to crawl
-		if ($result['has_more']) {
+		// 6. Save state if there's more to crawl (full mode only)
+		if ($scan_mode === 'full' && $result['has_more']) {
 			set_transient($state_key, $result['state'], 3600); // 1 hour expiry
 		} else {
 			// No more pages - delete state
@@ -159,8 +181,9 @@ class Links_Ajax
 			]);
 		}
 
-		// 6. Return results
+		// 7. Return results
 		wp_send_json_success([
+			'scan_mode' => $scan_mode,
 			'total_links_checked' => $result['total_links_checked'],
 			'broken_links_count' => $result['broken_links_count'],
 			'working_links' => $result['working_links'],

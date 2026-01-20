@@ -37,8 +37,34 @@ if (!defined('ABSPATH')) {
 	<div class="tool-form-card">
 		<form id="link-checker-form">
 			<div class="form-group">
+				<label>
+					Scan Mode <span class="required">*</span>
+				</label>
+				<div class="radio-group">
+					<label class="radio-option">
+						<input type="radio" name="scan_mode" value="quick" id="mode-quick" />
+						<span class="radio-label">
+							<strong>Quick Scan</strong> - Check links on a single page only
+							<small style="display:block; color: var(--text-secondary); margin-top: 4px;">
+								⚡ Fast (30 seconds - 2 minutes) · Checks up to 100 links on one page
+							</small>
+						</span>
+					</label>
+					<label class="radio-option">
+						<input type="radio" name="scan_mode" value="full" id="mode-full" />
+						<span class="radio-label">
+							<strong>Full Site Audit</strong> - Crawl and check entire website
+							<small style="display:block; color: var(--text-secondary); margin-top: 4px;">
+								🔍 Comprehensive (10-30 minutes) · Scans up to 1,000 pages
+							</small>
+						</span>
+					</label>
+				</div>
+			</div>
+
+			<div class="form-group">
 				<label for="check-url">
-					Enter Website URL to Scan <span class="required">*</span>
+					Enter Website URL <span class="required">*</span>
 				</label>
 				<input type="url"
 					id="check-url"
@@ -46,8 +72,8 @@ if (!defined('ABSPATH')) {
 					class="form-control"
 					placeholder="https://example.com"
 					required />
-				<p class="form-help">
-					We'll crawl your entire website (up to <?php echo esc_html(get_option('seo_tools_max_pages_crawl', 1000)); ?> pages) and check all links for broken ones.
+				<p class="form-help" id="url-help-text">
+					Please select a scan mode above.
 				</p>
 			</div>
 
