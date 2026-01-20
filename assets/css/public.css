@@ -394,6 +394,33 @@ textarea.form-control {
     border-color: var(--primary-color);
 }
 
+.btn-cancel {
+    display: inline-block;
+    padding: 10px 20px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    background: #dc3545;
+    color: white;
+    border: none;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-top: 16px;
+}
+
+.btn-cancel:hover:not(:disabled) {
+    background: #c82333;
+}
+
+.btn-cancel:active {
+    background: #bd2130;
+}
+
+.btn-cancel:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 .btn-loader {
     display: none;
 }
@@ -750,7 +777,7 @@ textarea.form-control {
 }
 
 /* ========================================
-   Progress Display
+   Progress Display & Info Messages
    ======================================== */
 
 .progress-display-card {
@@ -767,6 +794,68 @@ textarea.form-control {
     font-size: 1.5rem;
     margin-bottom: 25px;
     font-weight: 600;
+}
+
+/* Info Message Card */
+.info-message-card {
+    background: var(--bg-card);
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 30px;
+    margin: 30px 0;
+    text-align: center;
+}
+
+.info-message-card.info-success {
+    border-color: var(--success-color);
+    background: rgba(16, 185, 129, 0.05);
+}
+
+.info-message {
+    font-size: 1.125rem;
+    color: var(--text-primary);
+    margin-bottom: 16px;
+    line-height: 1.6;
+}
+
+.timer-display {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    margin: 16px 0;
+}
+
+.timer-icon {
+    font-size: 1.25rem;
+}
+
+.timer-label {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.timer-display strong {
+    color: var(--primary-color);
+    font-size: 1.125rem;
+}
+
+.continue-actions {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    align-items: center;
+    margin-top: 20px;
+}
+
+.continue-actions .btn-primary,
+.continue-actions .btn-cancel {
+    display: inline-block;
+    width: auto;
+    min-width: 180px;
 }
 
 .progress-stats {

@@ -1,9 +1,9 @@
 <?php
 
 /**
- * Link Checker Service
+ * Link Checker Service - Simplified Version
  *
- * Business logic for checking broken links on pages.
+ * Business logic for checking broken links with full website crawling.
  *
  * @package    SEO_Marketing_Tools
  * @subpackage Services
@@ -19,7 +19,7 @@ if (!defined('ABSPATH')) {
 class Link_Checker
 {
 	/**
-	 * Social media domains to exclude from checking
+	 * Social media domains to exclude from checking and crawling
 	 *
 	 * @var array
 	 * @since 1.0.0
@@ -42,240 +42,154 @@ class Link_Checker
 		'tiktok.com',
 		'snapchat.com',
 		'reddit.com',
-		'redd.it'
+		'redd.it',
+		'whatsapp.com',
+		'telegram.org',
+		't.me',
+		'discord.com',
+		'discord.gg',
+		'twitch.tv',
+		'vimeo.com',
+		'medium.com',
+		'tumblr.com'
 	];
 
 	/**
-	 * Crawl entire website and check all links
+	 * Crawl website and check all links (synchronous, chunked processing)
 	 *
 	 * @param string $start_url Starting URL
-	 * @param string $job_id Unique job ID for progress tracking
-	 * @return array Crawl results
+	 * @param int $max_pages Maximum pages to crawl in this chunk (default 100)
+	 * @param array|null $resume_state State from previous chunk (for resuming)
+	 * @return array Crawl results with state for resuming
 	 * @since 1.0.0
 	 */
-	public function crawl_website(string $start_url, string $job_id): array
+	public function crawl_website(string $start_url, int $max_pages = 100, ?array $resume_state = null): array
 	{
 		$start_time = microtime(true);
 
-		// Initialize crawl state
-		// Use associative arrays for O(1) lookup instead of O(n) in_array
-		$visited_urls = [];
-		$queued_urls = []; // Track normalized URLs already in queue to prevent duplicates
-		$crawl_queue = []; // Store as [normalized_url => original_url] for proper deduplication
+		// Initialize or resume state
+		if ($resume_state) {
+			$visited_urls = $resume_state['visited_urls'] ?? [];
+			$crawl_queue = $resume_state['queue'] ?? [];
+			$broken_links = $resume_state['broken_links'] ?? [];
+			$working_count = $resume_state['working_count'] ?? 0;
+			$total_pages_crawled = $resume_state['total_pages_crawled'] ?? 0;
+			$checked_link_urls = $resume_state['checked_link_urls'] ?? [];
+		} else {
+			// Fresh start
+			$visited_urls = [];
+			$crawl_queue = [$start_url];
+			$broken_links = [];
+			$working_count = 0;
+			$total_pages_crawled = 0;
+			$checked_link_urls = [];
+		}
 
-		// Normalize and add start URL
-		$normalized_start = $this->normalize_url_for_comparison($start_url);
-		$crawl_queue[$normalized_start] = $start_url; // Store normalized as key, original as value
-		$queued_urls[$normalized_start] = true;
-
-		$all_checked_links = [];
-		$checked_link_urls = []; // Track which links we've already checked to avoid duplicates
-		$broken_links = [];
-		$pages_crawled = 0;
 		$base_domain = $this->get_base_domain($start_url);
-		$start_path = parse_url($start_url, PHP_URL_PATH) ?: '/';
-		$start_path = rtrim($start_path, '/') ?: '/';
+		$pages_crawled_this_chunk = 0;
 
-		// Configuration
-		$max_pages = (int) get_option('seo_tools_max_pages_crawl', 1000);
-		$max_depth = (int) get_option('seo_tools_max_crawl_depth', 10);
+		// Crawl loop - process up to max_pages in this chunk
+		while (!empty($crawl_queue) && $pages_crawled_this_chunk < $max_pages && $total_pages_crawled < 1000) {
+			// Get next URL from queue
+			$current_url = array_shift($crawl_queue);
+			$normalized_url = $this->normalize_url($current_url);
 
-		// Initialize progress
-		$this->update_progress($job_id, [
-			'status' => 'scanning',
-			'pages_crawled' => 0,
-			'links_checked' => 0,
-			'broken_links_found' => 0,
-			'start_time' => $start_time,
-			'cancel_requested' => false
-		]);
-
-		// Crawl loop
-		while (!empty($crawl_queue) && $pages_crawled < $max_pages) {
-			// Check for cancel request
-			if ($this->is_cancel_requested($job_id)) {
-				return [
-					'success' => false,
-					'error' => 'Scan cancelled by user',
-					'code' => 'CANCELLED'
-				];
-			}
-
-			// Get next URL from queue (normalized URL is the key, original URL is the value)
-			$normalized_url = array_key_first($crawl_queue);
-			$current_url = $crawl_queue[$normalized_url];
-			unset($crawl_queue[$normalized_url]);
-
-			// Skip if already visited (double-check after dequeue)
-			if (isset($visited_urls[$normalized_url])) {
-				continue;
-			}
-
-			// Check depth (actual depth from start URL)
-			$current_path = parse_url($current_url, PHP_URL_PATH) ?: '/';
-			$current_path = rtrim($current_path, '/') ?: '/';
-			$depth = $this->calculate_depth($current_path, $start_path);
-
-			if ($depth > $max_depth) {
-				// Mark as visited even if depth exceeded to prevent re-queuing
-				$visited_urls[$normalized_url] = true;
-				unset($queued_urls[$normalized_url]);
+			// Skip if already visited
+			if (in_array($normalized_url, $visited_urls, true)) {
 				continue;
 			}
 
 			// Mark as visited
-			$visited_urls[$normalized_url] = true;
-			unset($queued_urls[$normalized_url]);
+			$visited_urls[] = $normalized_url;
 
 			// Fetch page
 			$page_content = $this->fetch_page($current_url);
 
 			if (!$page_content['success']) {
-				$pages_crawled++;
+				$pages_crawled_this_chunk++;
+				$total_pages_crawled++;
 				continue;
 			}
 
 			// Extract links
-			$links = $this->extract_links_with_categorization($page_content['html'], $current_url, $base_domain);
+			$links = $this->extract_links($page_content['html'], $current_url);
 
-			// Add internal links to crawl queue (with deduplication)
-			foreach ($links['internal'] as $internal_link) {
-				$normalized_internal = $this->normalize_url_for_comparison($internal_link['url']);
-
-				// Only add if not visited AND not already in queue
-				if (!isset($visited_urls[$normalized_internal]) && !isset($queued_urls[$normalized_internal])) {
-					// Store normalized URL as key, original URL as value for proper deduplication
-					$crawl_queue[$normalized_internal] = $internal_link['url'];
-					$queued_urls[$normalized_internal] = true;
-				}
-			}
-
-			// Check all links (internal + external)
-			$links_to_check = array_merge($links['internal'], $links['external']);
-
-			foreach ($links_to_check as $link) {
-				// Normalize link URL for deduplication
-				$normalized_link_url = $this->normalize_url_for_comparison($link['url']);
-
-				// Skip if we've already checked this link
-				if (isset($checked_link_urls[$normalized_link_url])) {
+			// Process each link
+			foreach ($links as $link) {
+				// Skip social media links completely
+				if ($this->is_social_link($link['url'])) {
 					continue;
 				}
 
-				// Mark as checked
-				$checked_link_urls[$normalized_link_url] = true;
+				$link_domain = $this->get_base_domain($link['url']);
+				$is_internal = ($link_domain === $base_domain);
 
-				// Check link status
+				// Add internal links to crawl queue
+				if ($is_internal) {
+					$normalized_link = $this->normalize_url($link['url']);
+					if (!in_array($normalized_link, $visited_urls, true) && !in_array($link['url'], $crawl_queue, true)) {
+						$crawl_queue[] = $link['url'];
+					}
+				}
+
+				// Check link status (both internal and external, but skip already checked)
+				$normalized_link_url = $this->normalize_url($link['url']);
+				if (in_array($normalized_link_url, $checked_link_urls, true)) {
+					continue; // Already checked this URL
+				}
+
+				$checked_link_urls[] = $normalized_link_url;
+
 				$timeout = (int) get_option('seo_tools_link_timeout', 5);
 				$result = $this->check_single_link($link['url'], $timeout);
 
-				$checked_link = [
-					'url' => $link['url'],
-					'anchor_text' => $link['anchor_text'],
-					'status' => $result['status'],
-					'status_code' => $result['status_code'],
-					'status_text' => $result['status_text'],
-					'response_time' => $result['response_time'],
-					'found_on_page' => $current_url
-				];
-
-				$all_checked_links[] = $checked_link;
-
 				// Track broken links
 				if ($result['status'] === 'broken' || $result['status'] === 'error') {
-					$broken_links[] = $checked_link;
+					$broken_links[] = [
+						'url' => $link['url'],
+						'anchor_text' => $link['anchor_text'],
+						'status' => $result['status'],
+						'status_code' => $result['status_code'],
+						'status_text' => $result['status_text'],
+						'response_time' => $result['response_time'],
+						'found_on_page' => $current_url
+					];
+				} else {
+					$working_count++;
 				}
 			}
 
-			$pages_crawled++;
-
-			// Update progress
-			$elapsed_time = (int) (microtime(true) - $start_time);
-			$this->update_progress($job_id, [
-				'status' => 'scanning',
-				'pages_crawled' => $pages_crawled,
-				'links_checked' => count($all_checked_links),
-				'broken_links_found' => count($broken_links),
-				'elapsed_time' => $elapsed_time,
-				'current_page' => $current_url
-			]);
+			$pages_crawled_this_chunk++;
+			$total_pages_crawled++;
 		}
 
 		// Calculate final stats
 		$scan_time = round(microtime(true) - $start_time, 2);
-		$working_links = count($all_checked_links) - count($broken_links);
+		$total_links_checked = count($broken_links) + $working_count;
+		$has_more = !empty($crawl_queue) && $total_pages_crawled < 1000;
 
-		// Update final progress
-		$this->update_progress($job_id, [
-			'status' => 'completed',
-			'pages_crawled' => $pages_crawled,
-			'links_checked' => count($all_checked_links),
-			'broken_links_found' => count($broken_links)
-		]);
-
-		return [
-			'success' => true,
-			'total_links_checked' => count($all_checked_links),
-			'working_links' => $working_links,
-			'broken_links_count' => count($broken_links),
-			'pages_crawled' => $pages_crawled,
-			'scan_time' => $scan_time,
-			'broken_links' => $broken_links
+		// Build state for resuming
+		$state = [
+			'visited_urls' => $visited_urls,
+			'queue' => $crawl_queue,
+			'broken_links' => $broken_links,
+			'working_count' => $working_count,
+			'total_pages_crawled' => $total_pages_crawled,
+			'checked_link_urls' => $checked_link_urls
 		];
-	}
-
-	/**
-	 * Check all links on a page (legacy method - kept for backward compatibility)
-	 *
-	 * @param string $url Page URL to check
-	 * @return array Check results
-	 * @since 1.0.0
-	 */
-	public function check_page_links(string $url): array
-	{
-		$start_time = microtime(true);
-
-		// 1. Fetch page content
-		$page_content = $this->fetch_page($url);
-
-		if (!$page_content['success']) {
-			return $page_content;
-		}
-
-		// 2. Extract all links
-		$links = $this->extract_links($page_content['html'], $url);
-
-		if (empty($links)) {
-			return [
-				'success' => false,
-				'error' => 'No links found on the page',
-				'code' => 'NO_LINKS_FOUND'
-			];
-		}
-
-		// 3. Limit number of links to check
-		$max_links = (int) get_option('seo_tools_max_links_check', 50);
-		if (count($links) > $max_links) {
-			$links = array_slice($links, 0, $max_links);
-		}
-
-		// 4. Check each link
-		$checked_links = $this->check_links($links);
-
-		// 5. Compile results
-		$broken_links = array_filter($checked_links, function ($link) {
-			return $link['status'] !== 'working';
-		});
-
-		$scan_time = round(microtime(true) - $start_time, 2);
 
 		return [
 			'success' => true,
-			'total_links' => count($checked_links),
-			'broken_links' => count($broken_links),
-			'working_links' => count($checked_links) - count($broken_links),
-			'links' => $checked_links,
-			'scan_time' => $scan_time
+			'pages_crawled' => $total_pages_crawled,
+			'pages_this_chunk' => $pages_crawled_this_chunk,
+			'total_links_checked' => $total_links_checked,
+			'working_links' => $working_count,
+			'broken_links_count' => count($broken_links),
+			'broken_links' => $broken_links,
+			'scan_time' => $scan_time,
+			'has_more' => $has_more,
+			'estimated_remaining' => count($crawl_queue),
+			'state' => $state
 		];
 	}
 
@@ -383,9 +297,10 @@ class Link_Checker
 		$seen_urls = [];
 
 		foreach ($links as $link) {
-			if (!in_array($link['url'], $seen_urls, true)) {
+			$normalized = $this->normalize_url($link['url']);
+			if (!in_array($normalized, $seen_urls, true)) {
 				$unique_links[] = $link;
-				$seen_urls[] = $link['url'];
+				$seen_urls[] = $normalized;
 			}
 		}
 
@@ -430,34 +345,6 @@ class Link_Checker
 		$path = substr($path, 0, strrpos($path, '/') + 1);
 
 		return $base . $path . $url;
-	}
-
-	/**
-	 * Check multiple links (concurrent)
-	 *
-	 * @param array $links Links to check
-	 * @return array Checked links with status
-	 * @since 1.0.0
-	 */
-	private function check_links(array $links): array
-	{
-		$timeout = (int) get_option('seo_tools_link_timeout', 5);
-		$checked = [];
-
-		foreach ($links as $link) {
-			$result = $this->check_single_link($link['url'], $timeout);
-
-			$checked[] = [
-				'url' => $link['url'],
-				'anchor_text' => $link['anchor_text'],
-				'status' => $result['status'],
-				'status_code' => $result['status_code'],
-				'status_text' => $result['status_text'],
-				'response_time' => $result['response_time']
-			];
-		}
-
-		return $checked;
 	}
 
 	/**
@@ -546,42 +433,6 @@ class Link_Checker
 	}
 
 	/**
-	 * Extract links with categorization (internal vs external)
-	 *
-	 * @param string $html HTML content
-	 * @param string $base_url Base URL for resolving relative links
-	 * @param string $base_domain Base domain for comparison
-	 * @return array Categorized links
-	 * @since 1.0.0
-	 */
-	private function extract_links_with_categorization(string $html, string $base_url, string $base_domain): array
-	{
-		$links = $this->extract_links($html, $base_url);
-
-		$internal = [];
-		$external = [];
-
-		foreach ($links as $link) {
-			// Skip social media links
-			if ($this->is_social_link($link['url'])) {
-				continue;
-			}
-
-			// Categorize as internal or external
-			if ($this->is_internal_link($link['url'], $base_domain)) {
-				$internal[] = $link;
-			} else {
-				$external[] = $link;
-			}
-		}
-
-		return [
-			'internal' => $internal,
-			'external' => $external
-		];
-	}
-
-	/**
 	 * Check if URL is a social media link
 	 *
 	 * @param string $url URL to check
@@ -612,21 +463,6 @@ class Link_Checker
 	}
 
 	/**
-	 * Check if URL is internal (same domain)
-	 *
-	 * @param string $url URL to check
-	 * @param string $base_domain Base domain
-	 * @return bool True if internal
-	 * @since 1.0.0
-	 */
-	private function is_internal_link(string $url, string $base_domain): bool
-	{
-		$link_domain = $this->get_base_domain($url);
-
-		return $link_domain === $base_domain;
-	}
-
-	/**
 	 * Get base domain from URL (handles www normalization)
 	 *
 	 * @param string $url URL
@@ -650,13 +486,13 @@ class Link_Checker
 	}
 
 	/**
-	 * Normalize URL for comparison (remove fragment, normalize www, normalize trailing slash)
+	 * Normalize URL for comparison (simple version)
 	 *
 	 * @param string $url URL to normalize
 	 * @return string Normalized URL
 	 * @since 1.0.0
 	 */
-	private function normalize_url_for_comparison(string $url): string
+	private function normalize_url(string $url): string
 	{
 		$parsed = parse_url($url);
 
@@ -672,7 +508,7 @@ class Link_Checker
 		}
 
 		if (isset($parsed['host'])) {
-			// Normalize www
+			// Normalize www and lowercase
 			$host = strtolower($parsed['host']);
 			$host = preg_replace('/^www\./i', '', $host);
 			$normalized .= $host;
@@ -683,7 +519,7 @@ class Link_Checker
 		}
 
 		if (isset($parsed['path'])) {
-			// Normalize trailing slash - remove it for comparison (except root)
+			// Normalize trailing slash - remove it (except for root)
 			$path = rtrim($parsed['path'], '/');
 			$normalized .= $path ?: '/';
 		} else {
@@ -697,127 +533,5 @@ class Link_Checker
 		// Don't include fragment (#section)
 
 		return $normalized;
-	}
-
-	/**
-	 * Calculate depth of URL from start URL path
-	 *
-	 * @param string $current_path Current URL path
-	 * @param string $start_path Start URL path
-	 * @return int Depth level
-	 * @since 1.0.0
-	 */
-	private function calculate_depth(string $current_path, string $start_path): int
-	{
-		// Normalize paths
-		$current_path = rtrim($current_path, '/') ?: '/';
-		$start_path = rtrim($start_path, '/') ?: '/';
-
-		// If paths are the same, depth is 0
-		if ($current_path === $start_path) {
-			return 0;
-		}
-
-		// Get path segments
-		$current_segments = array_filter(explode('/', trim($current_path, '/')));
-		$start_segments = array_filter(explode('/', trim($start_path, '/')));
-
-		// If start path is root, depth is just the number of segments in current path
-		if (empty($start_segments) || $start_path === '/') {
-			return count($current_segments);
-		}
-
-		// Check if current path starts with start path
-		if (strpos($current_path, $start_path) === 0) {
-			// Calculate depth based on path segments difference
-			$relative_path = substr($current_path, strlen($start_path));
-			$relative_path = ltrim($relative_path, '/');
-
-			if (empty($relative_path)) {
-				return 0;
-			}
-
-			// Count segments in relative path
-			$segments = array_filter(explode('/', $relative_path));
-			return count($segments);
-		}
-
-		// If current path doesn't start with start path, find common prefix
-		$common_segments = 0;
-		$min_length = min(count($current_segments), count($start_segments));
-
-		for ($i = 0; $i < $min_length; $i++) {
-			if ($current_segments[$i] === $start_segments[$i]) {
-				$common_segments++;
-			} else {
-				break;
-			}
-		}
-
-		// Depth is the difference in segments from common prefix
-		return abs(count($current_segments) - $common_segments);
-	}
-
-	/**
-	 * Update scan progress in transient
-	 *
-	 * @param string $job_id Job ID
-	 * @param array $progress Progress data
-	 * @return void
-	 * @since 1.0.0
-	 */
-	private function update_progress(string $job_id, array $progress): void
-	{
-		$transient_key = 'seo_scan_progress_' . $job_id;
-		set_transient($transient_key, $progress, 3600); // 1 hour expiry
-	}
-
-	/**
-	 * Check if cancel has been requested
-	 *
-	 * @param string $job_id Job ID
-	 * @return bool True if cancel requested
-	 * @since 1.0.0
-	 */
-	private function is_cancel_requested(string $job_id): bool
-	{
-		$transient_key = 'seo_scan_progress_' . $job_id;
-		$progress = get_transient($transient_key);
-
-		return isset($progress['cancel_requested']) && $progress['cancel_requested'] === true;
-	}
-
-	/**
-	 * Get scan progress
-	 *
-	 * @param string $job_id Job ID
-	 * @return array|false Progress data or false if not found
-	 * @since 1.0.0
-	 */
-	public function get_scan_progress(string $job_id)
-	{
-		$transient_key = 'seo_scan_progress_' . $job_id;
-		return get_transient($transient_key);
-	}
-
-	/**
-	 * Cancel scan
-	 *
-	 * @param string $job_id Job ID
-	 * @return bool True if cancelled
-	 * @since 1.0.0
-	 */
-	public function cancel_scan(string $job_id): bool
-	{
-		$transient_key = 'seo_scan_progress_' . $job_id;
-		$progress = get_transient($transient_key);
-
-		if ($progress) {
-			$progress['cancel_requested'] = true;
-			set_transient($transient_key, $progress, 3600);
-			return true;
-		}
-
-		return false;
 	}
 }

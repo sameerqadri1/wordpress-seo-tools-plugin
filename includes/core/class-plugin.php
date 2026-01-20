@@ -184,17 +184,9 @@ class Plugin
         $this->loader->add_action('wp_ajax_seo_check_links', $links_ajax, 'handle_check_links');
         $this->loader->add_action('wp_ajax_nopriv_seo_check_links', $links_ajax, 'handle_check_links');
 
-        // Link Checker Progress AJAX
-        $this->loader->add_action('wp_ajax_seo_get_scan_progress', $links_ajax, 'handle_get_scan_progress');
-        $this->loader->add_action('wp_ajax_nopriv_seo_get_scan_progress', $links_ajax, 'handle_get_scan_progress');
-
         // Link Checker Cancel AJAX
         $this->loader->add_action('wp_ajax_seo_cancel_scan', $links_ajax, 'handle_cancel_scan');
         $this->loader->add_action('wp_ajax_nopriv_seo_cancel_scan', $links_ajax, 'handle_cancel_scan');
-
-        // Link Checker Results AJAX
-        $this->loader->add_action('wp_ajax_seo_get_scan_results', $links_ajax, 'handle_get_scan_results');
-        $this->loader->add_action('wp_ajax_nopriv_seo_get_scan_results', $links_ajax, 'handle_get_scan_results');
 
         // Keyword Density AJAX (URL fetch only)
         $this->loader->add_action('wp_ajax_seo_fetch_url_content', $meta_ajax, 'handle_fetch_url_content');

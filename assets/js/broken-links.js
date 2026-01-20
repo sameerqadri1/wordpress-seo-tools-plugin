@@ -1,5 +1,5 @@
 /**
- * SEO Marketing Tools - Broken Link Checker
+ * SEO Marketing Tools - Broken Link Checker (Simplified)
  * 
  * @package SEO_Marketing_Tools
  * @since 1.0.0
@@ -9,11 +9,20 @@
     'use strict';
     
     let currentResults = null;
-    let currentFilter = 'all';
-    let currentJobId = null;
-    let progressInterval = null;
+    let currentUrl = null;
+    let currentAjaxRequest = null;
     let timerInterval = null;
     let scanStartTime = null;
+    
+    const STATE = {
+        IDLE: 'idle',
+        SCANNING: 'scanning',
+        PAUSED: 'paused',
+        COMPLETE: 'complete',
+        CANCELLED: 'cancelled'
+    };
+    
+    let currentState = STATE.IDLE;
     
     /**
      * Initialize broken link checker
@@ -21,7 +30,6 @@
     $(document).ready(function() {
         loadRateLimitStatus();
         initForm();
-        initFilters();
     });
     
     /**
@@ -93,11 +101,14 @@
                 return;
             }
             
-            // Get reCAPTCHA response
-            const recaptchaResponse = getRecaptchaResponse();
-            if (!recaptchaResponse && seoToolsConfig.recaptcha_site_key) {
-                showError('Please complete the reCAPTCHA verification');
-                return;
+            // Get reCAPTCHA response (only for new scans, not continuations)
+            let recaptchaResponse = '';
+            if (currentState !== STATE.PAUSED) {
+                recaptchaResponse = getRecaptchaResponse();
+                if (!recaptchaResponse && seoToolsConfig.recaptcha_site_key) {
+                    showError('Please complete the reCAPTCHA verification');
+                    return;
+                }
             }
             
             // Check links
@@ -106,10 +117,9 @@
         
         // Check another button
         $('#check-another').on('click', function() {
-            $('#link-results').slideUp();
+            resetToInitialState();
             $('#link-checker-form')[0].reset();
             resetRecaptcha();
-            scanStartTime = null;
         });
         
         // Export CSV
@@ -121,27 +131,22 @@
         $('#cancel-scan-btn').on('click', function() {
             cancelScan();
         });
-    }
-    
-    /**
-     * Initialize filter tabs
-     */
-    function initFilters() {
-        $('.filter-tab').on('click', function() {
-            const filter = $(this).data('status');
-            
-            $('.filter-tab').removeClass('active');
-            $(this).addClass('active');
-            
-            currentFilter = filter;
-            displayResults(currentResults);
+        
+        // Continue scanning button
+        $('#continue-scan-btn').on('click', function() {
+            if (currentUrl) {
+                continueScan(currentUrl);
+            }
         });
     }
     
     /**
-     * Check links on page (full website crawl)
+     * Check links (synchronous)
      */
     function checkLinks(url, recaptchaResponse) {
+        currentUrl = url;
+        currentState = STATE.SCANNING;
+        
         const $btn = $('#check-btn');
         $btn.prop('disabled', true);
         $btn.find('.btn-text').hide();
@@ -149,16 +154,19 @@
         
         $('#link-results').hide();
         $('#error-message').hide();
-        $('#progress-display').show();
-        $('#cancel-scan-btn').show();
+        $('#loading-message').show();
+        $('#loading-message .info-message').text('🔄 Scanning... Please wait (this may take 2-5 minutes)');
+        $('#cancel-scan-btn').show().prop('disabled', false).text('Cancel Scan');
+        $('#continue-prompt').hide();
         
         // Start timer
         scanStartTime = Date.now();
         startTimer();
         
-        $.ajax({
+        currentAjaxRequest = $.ajax({
             url: seoToolsConfig.ajax_url,
             type: 'POST',
+            timeout: 300000, // 5 minutes
             data: {
                 action: 'seo_check_links',
                 nonce: seoToolsConfig.nonces.links,
@@ -166,43 +174,196 @@
                 'g-recaptcha-response': recaptchaResponse
             },
             success: function(response) {
-                if (response.success && response.data.job_id) {
-                    // Start progress polling immediately
-                    currentJobId = response.data.job_id;
-                    startProgressPolling(currentJobId);
+                if (response.success) {
+                    handleScanComplete(response.data);
                 } else {
-                    stopTimer();
-                    stopProgressPolling();
-                    showError(response.data.message || 'Failed to start scan');
-                    $('#progress-display').hide();
-                    $('#cancel-scan-btn').hide();
-                    
-                    $btn.prop('disabled', false);
-                    $btn.find('.btn-text').show();
-                    $btn.find('.btn-loader').hide();
+                    handleScanError(response.data.message || 'Scan failed');
                 }
             },
-            error: function(xhr) {
-                stopTimer();
-                stopProgressPolling();
-                $('#progress-display').hide();
-                $('#cancel-scan-btn').hide();
-                
-                if (xhr.status === 504) {
-                    showError('Request timeout. Please try again.');
+            error: function(xhr, status) {
+                if (status === 'abort') {
+                    // User cancelled - expected
+                    return;
+                } else if (xhr.status === 504) {
+                    handleScanError('Request timeout. Please try again.');
                 } else {
-                    showError('Network error. Please try again.');
+                    handleScanError('Network error. Please try again.');
                 }
-                
-                $btn.prop('disabled', false);
-                $btn.find('.btn-text').show();
-                $btn.find('.btn-loader').hide();
             },
             complete: function() {
-                // Don't re-enable button here - wait for scan to complete
+                currentAjaxRequest = null;
                 resetRecaptcha();
             }
         });
+    }
+    
+    /**
+     * Continue scanning
+     */
+    function continueScan(url) {
+        currentState = STATE.SCANNING;
+        
+        $('#continue-prompt').hide();
+        $('#loading-message').show();
+        $('#loading-message .info-message').text('🔄 Continuing scan... Please wait');
+        $('#cancel-scan-btn').show().prop('disabled', false).text('Cancel Scan');
+        
+        // Resume timer
+        startTimer();
+        
+        currentAjaxRequest = $.ajax({
+            url: seoToolsConfig.ajax_url,
+            type: 'POST',
+            timeout: 300000, // 5 minutes
+            data: {
+                action: 'seo_check_links',
+                nonce: seoToolsConfig.nonces.links,
+                url: url
+                // No reCAPTCHA for continuations
+            },
+            success: function(response) {
+                if (response.success) {
+                    handleScanComplete(response.data);
+                } else {
+                    handleScanError(response.data.message || 'Scan failed');
+                }
+            },
+            error: function(xhr, status) {
+                if (status === 'abort') {
+                    return;
+                } else {
+                    handleScanError('Network error. Please try again.');
+                }
+            },
+            complete: function() {
+                currentAjaxRequest = null;
+            }
+        });
+    }
+    
+    /**
+     * Handle scan complete
+     */
+    function handleScanComplete(data) {
+        stopTimer();
+        $('#loading-message').hide();
+        $('#cancel-scan-btn').hide();
+        
+        // Update accumulated results
+        if (currentResults) {
+            // Merge with previous results (continuation)
+            currentResults = {
+                total_links_checked: data.total_links_checked,
+                working_links: data.working_links,
+                broken_links_count: data.broken_links_count,
+                broken_links: data.broken_links,
+                pages_crawled: data.pages_crawled,
+                scan_time: data.scan_time
+            };
+        } else {
+            // First chunk results
+            currentResults = data;
+        }
+        
+        // Display current results
+        displayResults(currentResults);
+        
+        if (data.has_more) {
+            // Show continue prompt
+            currentState = STATE.PAUSED;
+            const estimated = data.estimated_remaining || '?';
+            $('#continue-prompt .info-message').html(
+                `✓ Scanned <strong>${data.pages_crawled}</strong> pages. Continue scanning?<br>` +
+                `<small style="color: #9ca3af;">(Estimated ${estimated} more pages remaining)</small>`
+            );
+            $('#continue-prompt').show();
+            
+            // Re-enable check button
+            const $btn = $('#check-btn');
+            $btn.prop('disabled', false);
+            $btn.find('.btn-text').show();
+            $btn.find('.btn-loader').hide();
+        } else {
+            // Scan complete
+            currentState = STATE.COMPLETE;
+            loadRateLimitStatus();
+            
+            // Re-enable check button
+            const $btn = $('#check-btn');
+            $btn.prop('disabled', false);
+            $btn.find('.btn-text').show();
+            $btn.find('.btn-loader').hide();
+        }
+    }
+    
+    /**
+     * Handle scan error
+     */
+    function handleScanError(message) {
+        stopTimer();
+        $('#loading-message').hide();
+        $('#cancel-scan-btn').hide();
+        $('#continue-prompt').hide();
+        showError(message);
+        
+        currentState = STATE.IDLE;
+        
+        const $btn = $('#check-btn');
+        $btn.prop('disabled', false);
+        $btn.find('.btn-text').show();
+        $btn.find('.btn-loader').hide();
+    }
+    
+    /**
+     * Cancel scan
+     */
+    function cancelScan() {
+        if (!currentUrl) return;
+        
+        // Abort current AJAX request
+        if (currentAjaxRequest) {
+            currentAjaxRequest.abort();
+            currentAjaxRequest = null;
+        }
+        
+        // Call backend to cleanup state
+        $.ajax({
+            url: seoToolsConfig.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'seo_cancel_scan',
+                nonce: seoToolsConfig.nonces.links,
+                url: currentUrl
+            }
+        });
+        
+        // Reset UI immediately (don't wait for response)
+        resetToInitialState();
+        showInfo('Scan cancelled.');
+    }
+    
+    /**
+     * Reset to initial state
+     */
+    function resetToInitialState() {
+        stopTimer();
+        
+        $('#loading-message').hide();
+        $('#cancel-scan-btn').hide();
+        $('#continue-prompt').hide();
+        $('#link-results').hide();
+        
+        currentResults = null;
+        currentUrl = null;
+        currentState = STATE.IDLE;
+        scanStartTime = null;
+        
+        const $btn = $('#check-btn');
+        $btn.prop('disabled', false);
+        $btn.find('.btn-text').show();
+        $btn.find('.btn-loader').hide();
+        
+        $('#check-url').prop('disabled', false);
     }
     
     /**
@@ -241,191 +402,6 @@
         }
         
         $('#elapsed-time').text(timeStr);
-    }
-    
-    /**
-     * Start progress polling
-     */
-    function startProgressPolling(jobId) {
-        currentJobId = jobId;
-        pollProgress();
-        progressInterval = setInterval(pollProgress, 2000); // Poll every 2 seconds
-    }
-    
-    /**
-     * Stop progress polling
-     */
-    function stopProgressPolling() {
-        if (progressInterval) {
-            clearInterval(progressInterval);
-            progressInterval = null;
-        }
-        currentJobId = null;
-    }
-    
-    /**
-     * Poll for scan progress
-     */
-    function pollProgress() {
-        if (!currentJobId) return;
-        
-        $.ajax({
-            url: seoToolsConfig.ajax_url,
-            type: 'POST',
-            data: {
-                action: 'seo_get_scan_progress',
-                nonce: seoToolsConfig.nonces.links,
-                job_id: currentJobId
-            },
-            success: function(response) {
-                if (response.success) {
-                    if (response.data.status === 'completed') {
-                        // Scan complete, get final results
-                        getFinalResults();
-                    } else if (response.data.status === 'cancelled') {
-                        stopTimer();
-                        stopProgressPolling();
-                        showError('Scan cancelled by user.');
-                        $('#progress-display').hide();
-                        $('#cancel-scan-btn').hide();
-                        
-                        const $btn = $('#check-btn');
-                        $btn.prop('disabled', false);
-                        $btn.find('.btn-text').show();
-                        $btn.find('.btn-loader').hide();
-                    } else {
-                        // Update progress display
-                        updateProgressDisplay(response.data);
-                    }
-                }
-            },
-            error: function() {
-                // Continue polling even on error (might be temporary)
-            }
-        });
-    }
-    
-    /**
-     * Update progress display
-     */
-    function updateProgressDisplay(progress) {
-        $('#pages-crawled').text(progress.pages_crawled || 0);
-        $('#links-checked').text(progress.links_checked || 0);
-        $('#broken-found').text(progress.broken_links_found || 0);
-        
-        // Update elapsed time from progress if available
-        if (progress.elapsed_time) {
-            const elapsed = progress.elapsed_time;
-            const minutes = Math.floor(elapsed / 60);
-            const seconds = elapsed % 60;
-            
-            let timeStr = '';
-            if (minutes > 0) {
-                timeStr = minutes + 'm ' + seconds + 's';
-            } else {
-                timeStr = seconds + 's';
-            }
-            
-            $('#elapsed-time').text(timeStr);
-        }
-    }
-    
-    /**
-     * Get final scan results
-     */
-    function getFinalResults() {
-        $.ajax({
-            url: seoToolsConfig.ajax_url,
-            type: 'POST',
-            data: {
-                action: 'seo_get_scan_results',
-                nonce: seoToolsConfig.nonces.links,
-                job_id: currentJobId
-            },
-            success: function(response) {
-                if (response.success) {
-                    stopTimer();
-                    stopProgressPolling();
-                    
-                    if (response.data.success) {
-                        currentResults = {
-                            total_links_checked: response.data.total_links_checked,
-                            working_links: response.data.working_links,
-                            broken_links_count: response.data.broken_links_count,
-                            broken_links: response.data.broken_links,
-                            pages_crawled: response.data.pages_crawled,
-                            scan_time: response.data.scan_time
-                        };
-                        
-                        displayResults(currentResults);
-                        loadRateLimitStatus();
-                        
-                        $('#progress-display').hide();
-                        $('#cancel-scan-btn').hide();
-                        
-                        // Re-enable button
-                        const $btn = $('#check-btn');
-                        $btn.prop('disabled', false);
-                        $btn.find('.btn-text').show();
-                        $btn.find('.btn-loader').hide();
-                    } else {
-                        showError(response.data.error || 'Scan failed');
-                        $('#progress-display').hide();
-                        $('#cancel-scan-btn').hide();
-                        
-                        const $btn = $('#check-btn');
-                        $btn.prop('disabled', false);
-                        $btn.find('.btn-text').show();
-                        $btn.find('.btn-loader').hide();
-                    }
-                } else {
-                    // Results not ready yet, continue polling
-                    setTimeout(pollProgress, 2000);
-                }
-            },
-            error: function() {
-                // Retry getting results
-                setTimeout(getFinalResults, 2000);
-            }
-        });
-    }
-    
-    /**
-     * Cancel scan
-     */
-    function cancelScan() {
-        if (!currentJobId) return;
-        
-        $('#cancel-scan-btn').prop('disabled', true).text('Cancelling...');
-        
-        $.ajax({
-            url: seoToolsConfig.ajax_url,
-            type: 'POST',
-            data: {
-                action: 'seo_cancel_scan',
-                nonce: seoToolsConfig.nonces.links,
-                job_id: currentJobId
-            },
-            success: function(response) {
-                stopTimer();
-                stopProgressPolling();
-                $('#progress-display').hide();
-                $('#cancel-scan-btn').hide();
-                
-                if (response.success) {
-                    showError('Scan cancelled by user.');
-                } else {
-                    showError('Failed to cancel scan.');
-                }
-                
-                // Re-enable button
-                const $btn = $('#check-btn');
-                $btn.prop('disabled', false);
-                $btn.find('.btn-text').show();
-                $btn.find('.btn-loader').hide();
-                resetRecaptcha();
-            }
-        });
     }
     
     /**
@@ -528,6 +504,54 @@
         a.click();
         document.body.removeChild(a);
         window.URL.revokeObjectURL(url);
+    }
+    
+    /**
+     * Show error message
+     */
+    function showError(message) {
+        $('#error-message').html(`<strong>Error:</strong> ${escapeHtml(message)}`).slideDown();
+    }
+    
+    /**
+     * Show info message
+     */
+    function showInfo(message) {
+        $('#error-message').html(`<strong>ℹ</strong> ${escapeHtml(message)}`).slideDown();
+        setTimeout(function() {
+            $('#error-message').slideUp();
+        }, 3000);
+    }
+    
+    /**
+     * Validate URL
+     */
+    function isValidUrl(url) {
+        try {
+            new URL(url);
+            return url.startsWith('http://') || url.startsWith('https://');
+        } catch(e) {
+            return false;
+        }
+    }
+    
+    /**
+     * Get reCAPTCHA response
+     */
+    function getRecaptchaResponse() {
+        if (typeof grecaptcha !== 'undefined' && seoToolsConfig.recaptcha_site_key) {
+            return grecaptcha.getResponse();
+        }
+        return '';
+    }
+    
+    /**
+     * Reset reCAPTCHA
+     */
+    function resetRecaptcha() {
+        if (typeof grecaptcha !== 'undefined' && seoToolsConfig.recaptcha_site_key) {
+            grecaptcha.reset();
+        }
     }
     
     /**

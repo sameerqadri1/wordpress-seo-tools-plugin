@@ -64,32 +64,24 @@ if (!defined('ABSPATH')) {
 		</form>
 	</div>
 
-	<!-- Progress Display -->
-	<div id="progress-display" class="progress-display-card" style="display:none;">
-		<h3>⏳ Scanning in progress...</h3>
-		<div class="progress-stats">
-			<div class="progress-stat">
-				<span class="progress-icon">📄</span>
-				<span class="progress-label">Pages crawled:</span>
-				<strong id="pages-crawled">0</strong>
-			</div>
-			<div class="progress-stat">
-				<span class="progress-icon">🔗</span>
-				<span class="progress-label">Links checked:</span>
-				<strong id="links-checked">0</strong>
-			</div>
-			<div class="progress-stat">
-				<span class="progress-icon">✗</span>
-				<span class="progress-label">Broken links found:</span>
-				<strong id="broken-found">0</strong>
-			</div>
-			<div class="progress-stat">
-				<span class="progress-icon">⏱️</span>
-				<span class="progress-label">Elapsed time:</span>
-				<strong id="elapsed-time">0s</strong>
-			</div>
+	<!-- Loading Message -->
+	<div id="loading-message" class="info-message-card" style="display:none;">
+		<p class="info-message">🔄 Scanning... Please wait (this may take 2-5 minutes)</p>
+		<div class="timer-display">
+			<span class="timer-icon">⏱️</span>
+			<span class="timer-label">Elapsed:</span>
+			<strong id="elapsed-time">0s</strong>
 		</div>
-		<button type="button" id="cancel-scan-btn" class="btn-secondary">Cancel Scan</button>
+		<button type="button" id="cancel-scan-btn" class="btn-cancel">Cancel Scan</button>
+	</div>
+
+	<!-- Continue Prompt -->
+	<div id="continue-prompt" class="info-message-card info-success" style="display:none;">
+		<p class="info-message">✓ Scanned 100 pages. Continue scanning?</p>
+		<div class="continue-actions">
+			<button type="button" id="continue-scan-btn" class="btn-primary">Continue Scanning</button>
+			<button type="button" id="cancel-scan-btn-continue" class="btn-cancel" onclick="$('#cancel-scan-btn').trigger('click')">Stop Here</button>
+		</div>
 	</div>
 
 	<!-- Results Section -->
