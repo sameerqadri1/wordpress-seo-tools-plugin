@@ -991,18 +991,26 @@ textarea.form-control {
 }
 
 /* ======================
-   Elementor Theme Overrides
+   Tool-Specific Overrides (scoped to tool pages only)
    ====================== */
 
-/* Fix Elementor theme link colors */
-.elementor-kit-2737 a {
+/* Hide breadcrumb on tool pages */
+.seo-tool-container .seo-breadcrumb,
+.seo-tool-container .breadcrumb,
+.seo-tool-container .breadcrumbs {
+    display: none !important;
+}
+
+/* Link colors - scoped to tool container only */
+.seo-tool-container a {
     color: #ffffff !important;
 }
 
-.elementor-kit-2737 a:hover {
+.seo-tool-container a:hover {
     color: #B60016 !important;
 }
 
-.elementor-kit-2737 button:hover {
+/* Button hover - scoped to tool container only */
+.seo-tool-container button:hover {
     color: #ffffff !important;
 }
