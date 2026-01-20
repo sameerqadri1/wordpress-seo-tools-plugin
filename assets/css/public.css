@@ -339,7 +339,7 @@ textarea.form-control {
 
 .radio-option {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     padding: 16px;
     border: 2px solid var(--border-color);
     border-radius: var(--radius);
@@ -354,12 +354,13 @@ textarea.form-control {
 }
 
 .radio-option input[type="radio"] {
-    margin-top: 4px;
+    margin-top: 0;
     margin-right: 12px;
     cursor: pointer;
     width: 18px;
     height: 18px;
     accent-color: var(--primary-color);
+    flex-shrink: 0;
 }
 
 .radio-option input[type="radio"]:checked ~ .radio-label {
