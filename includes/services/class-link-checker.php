@@ -169,6 +169,8 @@ class Link_Checker
 		$scan_time = round(microtime(true) - $start_time, 2);
 		$total_links_checked = count($broken_links) + $working_count;
 		$has_more = !empty($crawl_queue) && $total_pages_crawled < 1000;
+		$estimated_remaining = count($crawl_queue);
+		$estimated_total_pages = min($total_pages_crawled + $estimated_remaining, 1000);
 
 		// Build state for resuming
 		$state = [
@@ -190,7 +192,8 @@ class Link_Checker
 			'broken_links' => $broken_links,
 			'scan_time' => $scan_time,
 			'has_more' => $has_more,
-			'estimated_remaining' => count($crawl_queue),
+			'estimated_remaining' => $estimated_remaining,
+			'estimated_total_pages' => $estimated_total_pages,
 			'state' => $state
 		];
 	}
@@ -276,7 +279,8 @@ class Link_Checker
 			'pages_crawled' => 1,
 			'scan_time' => $scan_time,
 			'has_more' => false,
-			'estimated_remaining' => 0
+			'estimated_remaining' => 0,
+			'estimated_total_pages' => 1
 		];
 	}
 

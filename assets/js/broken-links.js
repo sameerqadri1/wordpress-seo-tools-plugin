@@ -13,6 +13,11 @@
     let currentAjaxRequest = null;
     let timerInterval = null;
     let scanStartTime = null;
+    let totalPagesScanned = 0;
+    let totalLinksChecked = 0;
+    let totalBrokenLinks = 0;
+    let estimatedTotalPages = 0;
+    let autoContinueEnabled = true;
     
     const STATE = {
         IDLE: 'idle',
@@ -159,7 +164,7 @@
     }
     
     /**
-     * Check links (synchronous)
+     * Check links (synchronous with auto-continue)
      */
     function checkLinks(url, recaptchaResponse, scanMode) {
         currentUrl = url;
@@ -178,12 +183,26 @@
         $('#link-results').hide();
         $('#error-message').hide();
         $('#loading-message').show();
-        $('#loading-message .info-message').text('🔄 Scanning... Please wait (this may take 2-5 minutes)');
+        
+        // Update status text based on mode
+        if (scanMode === 'quick') {
+            $('#scan-status-text').text('🔍 Scanning page for broken links...');
+        } else {
+            $('#scan-status-text').text('🌐 Crawling website and checking links...');
+        }
+        
         $('#cancel-scan-btn').show().prop('disabled', false).text('Cancel Scan');
         $('#continue-prompt').hide();
         
+        // Reset progress on first scan (not continuations)
+        if (!currentResults) {
+            resetProgressBar();
+        }
+        
         // Start timer
-        scanStartTime = Date.now();
+        if (!scanStartTime) {
+            scanStartTime = Date.now();
+        }
         startTimer();
         
         currentAjaxRequest = $.ajax({
@@ -199,7 +218,7 @@
             },
             success: function(response) {
                 if (response.success) {
-                    handleScanComplete(response.data);
+                    handleScanComplete(response.data, scanMode);
                 } else {
                     handleScanError(response.data.message || 'Scan failed');
                 }
@@ -269,11 +288,7 @@
     /**
      * Handle scan complete
      */
-    function handleScanComplete(data) {
-        stopTimer();
-        $('#loading-message').hide();
-        $('#cancel-scan-btn').hide();
-        
+    function handleScanComplete(data, scanMode) {
         // Update accumulated results
         if (currentResults) {
             // Merge with previous results (continuation)
@@ -283,18 +298,39 @@
                 broken_links_count: data.broken_links_count,
                 broken_links: data.broken_links,
                 pages_crawled: data.pages_crawled,
-                scan_time: data.scan_time
+                scan_time: data.scan_time,
+                estimated_total_pages: data.estimated_total_pages
             };
         } else {
             // First chunk results
             currentResults = data;
         }
         
-        // Display current results
+        // Update progress bar
+        updateProgressBar(currentResults);
+        
+        // Display current results (show accumulated progress)
         displayResults(currentResults);
         
-        if (data.has_more) {
-            // Show continue prompt
+        if (data.has_more && autoContinueEnabled && scanMode === 'full') {
+            // AUTO-CONTINUE: Automatically continue scanning
+            $('#scan-status-text').html(
+                `✓ Scanned <strong>${data.pages_crawled}</strong> pages &middot; ` +
+                `<span style="color: #10b981;">Auto-continuing...</span>`
+            );
+            
+            // Wait 500ms before next chunk (brief pause to show progress)
+            setTimeout(function() {
+                if (currentState === STATE.SCANNING) {
+                    continueScan(currentUrl);
+                }
+            }, 500);
+        } else if (data.has_more && !autoContinueEnabled) {
+            // Show manual continue prompt
+            stopTimer();
+            $('#loading-message').hide();
+            $('#cancel-scan-btn').hide();
+            
             currentState = STATE.PAUSED;
             const estimated = data.estimated_remaining || '?';
             $('#continue-prompt .info-message').html(
@@ -309,9 +345,16 @@
             $btn.find('.btn-text').show();
             $btn.find('.btn-loader').hide();
         } else {
-            // Scan complete
+            // Scan complete!
+            stopTimer();
+            $('#loading-message').hide();
+            $('#cancel-scan-btn').hide();
+            
             currentState = STATE.COMPLETE;
             loadRateLimitStatus();
+            
+            // Update progress to 100%
+            updateProgressBar({...currentResults, has_more: false});
             
             // Re-enable check button
             const $btn = $('#check-btn');
@@ -345,6 +388,10 @@
     function cancelScan() {
         if (!currentUrl) return;
         
+        // Disable auto-continue
+        autoContinueEnabled = false;
+        currentState = STATE.CANCELLED;
+        
         // Abort current AJAX request
         if (currentAjaxRequest) {
             currentAjaxRequest.abort();
@@ -372,6 +419,7 @@
      */
     function resetToInitialState() {
         stopTimer();
+        resetProgressBar();
         
         $('#loading-message').hide();
         $('#cancel-scan-btn').hide();
@@ -382,6 +430,7 @@
         currentUrl = null;
         currentState = STATE.IDLE;
         scanStartTime = null;
+        autoContinueEnabled = true;
         
         const $btn = $('#check-btn');
         $btn.prop('disabled', false);
@@ -389,6 +438,54 @@
         $btn.find('.btn-loader').hide();
         
         $('#check-url').prop('disabled', false);
+    }
+    
+    /**
+     * Update progress bar
+     */
+    function updateProgressBar(data) {
+        totalPagesScanned = data.pages_crawled || 0;
+        totalLinksChecked = data.total_links_checked || 0;
+        totalBrokenLinks = data.broken_links_count || 0;
+        estimatedTotalPages = data.estimated_total_pages || totalPagesScanned;
+        
+        // Calculate percentage
+        let percentage = 0;
+        if (estimatedTotalPages > 0) {
+            percentage = Math.min(Math.round((totalPagesScanned / estimatedTotalPages) * 100), 99);
+        }
+        
+        // If scan is complete, show 100%
+        if (!data.has_more) {
+            percentage = 100;
+        }
+        
+        // Update progress bar
+        $('#progress-bar-fill').css('width', percentage + '%');
+        
+        // Update progress text
+        $('#progress-text').text(`${totalPagesScanned}/${estimatedTotalPages} pages scanned (${percentage}%)`);
+        
+        // Update progress stats
+        $('#progress-pages').text(totalPagesScanned);
+        $('#progress-links').text(totalLinksChecked);
+        $('#progress-broken').text(totalBrokenLinks);
+    }
+    
+    /**
+     * Reset progress bar
+     */
+    function resetProgressBar() {
+        totalPagesScanned = 0;
+        totalLinksChecked = 0;
+        totalBrokenLinks = 0;
+        estimatedTotalPages = 0;
+        
+        $('#progress-bar-fill').css('width', '0%');
+        $('#progress-text').text('0/0 pages scanned (0%)');
+        $('#progress-pages').text('0');
+        $('#progress-links').text('0');
+        $('#progress-broken').text('0');
     }
     
     /**

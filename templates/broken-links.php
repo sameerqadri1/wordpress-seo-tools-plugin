@@ -20,7 +20,7 @@ if (!defined('ABSPATH')) {
 
 	<!-- Header -->
 	<div class="tool-header">
-		<h1>🔗 Broken Link Checker</h1>
+		<h1> Broken Link Checker</h1>
 		<p class="tool-description">
 			Find and fix broken links on any webpage. Broken links harm user experience and SEO.
 			Get a detailed report with status codes and response times.
@@ -29,38 +29,12 @@ if (!defined('ABSPATH')) {
 
 	<!-- Rate Limit Info -->
 	<div class="rate-limit-info" id="rate-limit-status">
-		<span class="limit-icon">⚡</span>
 		<span class="limit-text">Loading...</span>
 	</div>
 
 	<!-- Checker Form -->
 	<div class="tool-form-card">
 		<form id="link-checker-form">
-			<div class="form-group">
-				<label>
-					Scan Mode <span class="required">*</span>
-				</label>
-				<div class="radio-group">
-					<label class="radio-option">
-						<input type="radio" name="scan_mode" value="quick" id="mode-quick" />
-						<span class="radio-label">
-							<strong>Quick Scan</strong> - Check links on a single page only
-							<small style="display:block; color: var(--text-secondary); margin-top: 4px;">
-								⚡ Fast (30 seconds - 2 minutes) · Checks up to 100 links on one page
-							</small>
-						</span>
-					</label>
-					<label class="radio-option">
-						<input type="radio" name="scan_mode" value="full" id="mode-full" />
-						<span class="radio-label">
-							<strong>Full Site Audit</strong> - Crawl and check entire website
-							<small style="display:block; color: var(--text-secondary); margin-top: 4px;">
-								🔍 Comprehensive (10-30 minutes) · Scans up to 1,000 pages
-							</small>
-						</span>
-					</label>
-				</div>
-			</div>
 
 			<div class="form-group">
 				<label for="check-url">
@@ -75,6 +49,31 @@ if (!defined('ABSPATH')) {
 				<p class="form-help" id="url-help-text">
 					Please select a scan mode above.
 				</p>
+			</div>
+			<div class="form-group">
+				<label>
+					Scan Mode <span class="required">*</span>
+				</label>
+				<div class="radio-group">
+					<label class="radio-option">
+						<input type="radio" name="scan_mode" value="quick" id="mode-quick" />
+						<span class="radio-label">
+							<strong>Quick Scan</strong>Check links on a single page only
+							<small style="display:block; color: var(--text-secondary); margin-top: 4px;">
+								Fast (30 seconds - 2 minutes) · Checks up to 100 links on one page
+							</small>
+						</span>
+					</label>
+					<label class="radio-option">
+						<input type="radio" name="scan_mode" value="full" id="mode-full" />
+						<span class="radio-label">
+							<strong>Full Site Audit</strong>Crawl and check entire website
+							<small style="display:block; color: var(--text-secondary); margin-top: 4px;">
+								Comprehensive (10-30 minutes) · Scans up to 1,000 pages
+							</small>
+						</span>
+					</label>
+				</div>
 			</div>
 
 			<!-- reCAPTCHA -->
@@ -92,12 +91,24 @@ if (!defined('ABSPATH')) {
 
 	<!-- Loading Message -->
 	<div id="loading-message" class="info-message-card" style="display:none;">
-		<p class="info-message">🔄 Scanning... Please wait (this may take 2-5 minutes)</p>
-		<div class="timer-display">
-			<span class="timer-icon">⏱️</span>
-			<span class="timer-label">Elapsed:</span>
-			<strong id="elapsed-time">0s</strong>
+		<p class="info-message" id="scan-status-text">Scanning... Please wait</p>
+
+		<!-- Progress Bar -->
+		<div class="progress-bar-container">
+			<div class="progress-bar-info">
+				<span id="progress-text">0/0 pages scanned (0%)</span>
+				<span id="progress-time" class="progress-time">Elapsed: <strong id="elapsed-time">0s</strong></span>
+			</div>
+			<div class="progress-bar-track">
+				<div class="progress-bar-fill" id="progress-bar-fill" style="width: 0%"></div>
+			</div>
+			<div class="progress-stats-mini">
+				<span>📄 <strong id="progress-pages">0</strong> pages</span>
+				<span>🔗 <strong id="progress-links">0</strong> links checked</span>
+				<span>✗ <strong id="progress-broken">0</strong> broken</span>
+			</div>
 		</div>
+
 		<button type="button" id="cancel-scan-btn" class="btn-cancel">Cancel Scan</button>
 	</div>
 
@@ -168,7 +179,7 @@ if (!defined('ABSPATH')) {
 				Scan Another Website
 			</button>
 			<button type="button" id="export-csv" class="btn-secondary">
-				📥 Export Broken Links (CSV)
+				Export Broken Links (CSV)
 			</button>
 		</div>
 	</div>
@@ -178,7 +189,7 @@ if (!defined('ABSPATH')) {
 
 	<!-- How to Use -->
 	<div class="tool-info-card">
-		<h2>💡 How to Use This Tool</h2>
+		<h2> How to Use This Tool</h2>
 		<ol class="info-list">
 			<li><strong>Enter Website URL:</strong> Paste the homepage or any page URL of your website.</li>
 			<li><strong>Start Scan:</strong> Click "Start Scanning" and wait while we crawl your entire website.</li>
@@ -188,7 +199,7 @@ if (!defined('ABSPATH')) {
 			<li><strong>Export Report:</strong> Download a CSV file for your records.</li>
 		</ol>
 
-		<h3>🔍 What Gets Scanned?</h3>
+		<h3> What Gets Scanned?</h3>
 		<ul class="info-list">
 			<li><strong>Full Website Crawl:</strong> Up to 1,000 pages on your domain</li>
 			<li><strong>Internal Links:</strong> All links within your website</li>
@@ -197,7 +208,7 @@ if (!defined('ABSPATH')) {
 			<li><strong>Results:</strong> Only broken links are displayed</li>
 		</ul>
 
-		<h3>🔴 Understanding Status Codes</h3>
+		<h3> Understanding Status Codes</h3>
 		<ul class="info-list">
 			<li><strong>404:</strong> Page not found (broken link - fix immediately)</li>
 			<li><strong>403:</strong> Forbidden (access denied)</li>
@@ -205,7 +216,7 @@ if (!defined('ABSPATH')) {
 			<li><strong>Timeout:</strong> Link didn't respond (check URL or server)</li>
 		</ul>
 
-		<h3>⚡ Why Fix Broken Links?</h3>
+		<h3> Why Fix Broken Links?</h3>
 		<ul class="info-list">
 			<li>Improves user experience</li>
 			<li>Maintains SEO rankings</li>
@@ -220,10 +231,10 @@ if (!defined('ABSPATH')) {
 		<h3>Try Our Other Tools</h3>
 		<div class="tools-links">
 			<a href="<?php echo esc_url(site_url('/seo-tools/meta-generator/')); ?>" class="tool-link">
-				🎯 AI Meta Generator
+				AI Meta Generator
 			</a>
 			<a href="<?php echo esc_url(site_url('/seo-tools/keyword-density/')); ?>" class="tool-link">
-				📊 Keyword Density Checker
+				Keyword Density Checker
 			</a>
 		</div>
 	</div>

@@ -16,6 +16,7 @@ use SEO_Marketing_Tools\Database\Rate_Limiter;
 use SEO_Marketing_Tools\Utils\Validator;
 use SEO_Marketing_Tools\Utils\Cache_Manager;
 use SEO_Marketing_Tools\Utils\Logger;
+use SEO_Marketing_Tools\Utils\Scan_Lock_Manager;
 use SEO_Marketing_Tools\Services\Link_Checker;
 
 if (!defined('ABSPATH')) {
@@ -48,6 +49,7 @@ class Links_Ajax
 		$rate_limiter = new Rate_Limiter();
 		$cache_manager = new Cache_Manager();
 		$logger = new Logger();
+		$scan_lock_manager = new Scan_Lock_Manager();
 
 		// 2. Get and validate scan mode
 		$scan_mode = $_POST['scan_mode'] ?? '';
@@ -88,8 +90,18 @@ class Links_Ajax
 			}
 		}
 
-		// For new scans (not continuations), verify reCAPTCHA and rate limit
+		// For new scans (not continuations), verify reCAPTCHA, rate limit, and scan locks
 		if (!$resume_state) {
+			// Check concurrent scan limits
+			$scan_lock_check = $scan_lock_manager->can_start_scan();
+			if (!$scan_lock_check['allowed']) {
+				wp_send_json_error([
+					'message' => $scan_lock_check['message'],
+					'code' => $scan_lock_check['code']
+				]);
+				return;
+			}
+
 			// Verify reCAPTCHA
 			$recaptcha_response = $_POST['g-recaptcha-response'] ?? '';
 			$recaptcha_secret = get_option('seo_tools_recaptcha_secret_key', '');
@@ -129,6 +141,12 @@ class Links_Ajax
 					return;
 				}
 			}
+
+			// Acquire scan lock
+			$scan_lock_manager->acquire_lock();
+		} else {
+			// For continuations, just update the lock activity timestamp
+			$scan_lock_manager->update_lock_activity();
 		}
 
 		// 5. Run the scan based on mode
@@ -146,6 +164,9 @@ class Links_Ajax
 			// Delete state on error
 			delete_transient($state_key);
 
+			// Release scan lock
+			$scan_lock_manager->release_lock();
+
 			wp_send_json_error([
 				'message' => $result['error'] ?? 'Scan failed',
 				'code' => $result['code'] ?? 'SCAN_FAILED'
@@ -156,9 +177,13 @@ class Links_Ajax
 		// 6. Save state if there's more to crawl (full mode only)
 		if ($scan_mode === 'full' && $result['has_more']) {
 			set_transient($state_key, $result['state'], 3600); // 1 hour expiry
+			// Lock remains active for continuation
 		} else {
 			// No more pages - delete state
 			delete_transient($state_key);
+
+			// Release scan lock (scan complete)
+			$scan_lock_manager->release_lock();
 
 			// Cache the final result
 			$cache_key = $cache_manager->generate_cache_key('links', ['url' => $url]);
@@ -191,7 +216,8 @@ class Links_Ajax
 			'pages_crawled' => $result['pages_crawled'],
 			'scan_time' => $result['scan_time'],
 			'has_more' => $result['has_more'],
-			'estimated_remaining' => $result['estimated_remaining'] ?? 0
+			'estimated_remaining' => $result['estimated_remaining'] ?? 0,
+			'estimated_total_pages' => $result['estimated_total_pages'] ?? $result['pages_crawled']
 		]);
 	}
 
@@ -224,6 +250,10 @@ class Links_Ajax
 		// Delete state transient
 		$state_key = 'seo_scan_state_' . md5($url);
 		delete_transient($state_key);
+
+		// Release scan lock
+		$scan_lock_manager = new Scan_Lock_Manager();
+		$scan_lock_manager->release_lock();
 
 		wp_send_json_success([
 			'message' => 'Scan cancelled and data cleared'
