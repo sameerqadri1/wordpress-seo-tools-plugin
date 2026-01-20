@@ -111,55 +111,55 @@ class Link_Checker
 				continue;
 			}
 
-		// Extract links
-		$links = $this->extract_links($page_content['html'], $current_url);
+			// Extract links
+			$links = $this->extract_links($page_content['html'], $current_url);
 
-		// Collect links to check (filter and deduplicate)
-		$links_to_check = [];
+			// Collect links to check (filter and deduplicate)
+			$links_to_check = [];
 
-		foreach ($links as $link) {
-			// Skip social media links completely
-			if ($this->is_social_link($link['url'])) {
-				continue;
-			}
+			foreach ($links as $link) {
+				// Skip social media links completely
+				if ($this->is_social_link($link['url'])) {
+					continue;
+				}
 
-			$link_domain = $this->get_base_domain($link['url']);
-			$is_internal = ($link_domain === $base_domain);
+				$link_domain = $this->get_base_domain($link['url']);
+				$is_internal = ($link_domain === $base_domain);
 
-			// Add internal links to crawl queue
-			if ($is_internal) {
-				$normalized_link = $this->normalize_url($link['url']);
-				if (!in_array($normalized_link, $visited_urls, true) && !in_array($link['url'], $crawl_queue, true)) {
-					$crawl_queue[] = $link['url'];
+				// Add internal links to crawl queue
+				if ($is_internal) {
+					$normalized_link = $this->normalize_url($link['url']);
+					if (!in_array($normalized_link, $visited_urls, true) && !in_array($link['url'], $crawl_queue, true)) {
+						$crawl_queue[] = $link['url'];
+					}
+				}
+
+				// Collect link for batch checking (skip already checked)
+				$normalized_link_url = $this->normalize_url($link['url']);
+				if (!in_array($normalized_link_url, $checked_link_urls, true)) {
+					$checked_link_urls[] = $normalized_link_url;
+
+					$links_to_check[] = [
+						'url' => $link['url'],
+						'anchor_text' => $link['anchor_text'],
+						'found_on_page' => $current_url
+					];
 				}
 			}
 
-			// Collect link for batch checking (skip already checked)
-			$normalized_link_url = $this->normalize_url($link['url']);
-			if (!in_array($normalized_link_url, $checked_link_urls, true)) {
-				$checked_link_urls[] = $normalized_link_url;
+			// Check all links from this page in parallel batches
+			if (!empty($links_to_check)) {
+				$batch_results = $this->check_links_batch($links_to_check, 10);
 
-				$links_to_check[] = [
-					'url' => $link['url'],
-					'anchor_text' => $link['anchor_text'],
-					'found_on_page' => $current_url
-				];
-			}
-		}
-
-		// Check all links from this page in parallel batches
-		if (!empty($links_to_check)) {
-			$batch_results = $this->check_links_batch($links_to_check, 10);
-
-			// Process batch results
-			foreach ($batch_results as $result) {
-				if ($result['status'] === 'broken' || $result['status'] === 'error') {
-					$broken_links[] = $result;
-				} else {
-					$working_count++;
+				// Process batch results
+				foreach ($batch_results as $result) {
+					if ($result['status'] === 'broken' || $result['status'] === 'error') {
+						$broken_links[] = $result;
+					} else {
+						$working_count++;
+					}
 				}
 			}
-		}
 
 			$pages_crawled_this_chunk++;
 			$total_pages_crawled++;
@@ -350,11 +350,11 @@ class Link_Checker
 	}
 
 	/**
-	 * Check multiple links in parallel (batch checking)
+	 * Check multiple links in batch (optimized sequential with minimal delay)
 	 * Based on broken-link-checker architecture
 	 *
 	 * @param array $links Array of links to check
-	 * @param int $batch_size Number of links to check simultaneously
+	 * @param int $batch_size Number of links to check per batch
 	 * @return array Results for all links
 	 * @since 1.0.0
 	 */
@@ -364,107 +364,21 @@ class Link_Checker
 			return [];
 		}
 
-		// Group links by host for per-host rate limiting
-		$links_by_host = $this->group_links_by_host($links);
 		$all_results = [];
 
-		// Process each host's links with per-host limiting (max 2 concurrent per host)
-		foreach ($links_by_host as $host => $host_links) {
-			// Check max 2 links per host at a time to avoid overwhelming servers
-			$host_batches = array_chunk($host_links, 2);
+		// Process links in batches with optimized checking
+		foreach ($links as $link) {
+			$result = $this->check_single_link($link['url'], 3);
 
-			foreach ($host_batches as $host_batch) {
-				// Prepare requests for parallel execution
-				$requests = [];
-				$request_map = []; // Map request keys to original link data
-
-				foreach ($host_batch as $link) {
-					$url = $link['url'];
-					$request_key = md5($url);
-
-					$requests[$request_key] = [
-						'url' => $url,
-						'type' => \WpOrg\Requests\Requests::HEAD,
-						'headers' => [
-							'User-Agent' => 'SEO Tools Link Checker/1.0'
-						],
-						'options' => [
-							'timeout' => 3,
-							'follow_redirects' => true,
-							'redirects' => 5,
-							'verify' => false // Some sites have SSL issues
-						]
-					];
-
-					$request_map[$request_key] = $link;
-				}
-
-				// Execute all requests in parallel
-				try {
-					$responses = \WpOrg\Requests\Requests::request_multiple($requests);
-
-					// Process each response
-					foreach ($responses as $request_key => $response) {
-						$link = $request_map[$request_key];
-						$url = $link['url'];
-
-						if (is_a($response, 'WpOrg\Requests\Exception')) {
-							// Request failed with exception
-							$all_results[] = [
-								'url' => $url,
-								'anchor_text' => $link['anchor_text'],
-								'status' => 'error',
-								'status_code' => 0,
-								'status_text' => $response->getMessage(),
-								'response_time' => 0,
-								'found_on_page' => $link['found_on_page']
-							];
-						} else {
-							// Successful response
-							$status_code = $response->status_code;
-
-							// Determine status
-							$status = 'working';
-							$status_text = 'OK';
-
-							if ($status_code >= 400 && $status_code < 500) {
-								$status = 'broken';
-								$status_text = $this->get_status_text($status_code);
-							} elseif ($status_code >= 500) {
-								$status = 'error';
-								$status_text = $this->get_status_text($status_code);
-							} elseif ($status_code >= 300 && $status_code < 400) {
-								$status = 'redirect';
-								$status_text = 'Redirect';
-							}
-
-							$all_results[] = [
-								'url' => $url,
-								'anchor_text' => $link['anchor_text'],
-								'status' => $status,
-								'status_code' => $status_code,
-								'status_text' => $status_text,
-								'response_time' => 0, // Not easily available in batch mode
-								'found_on_page' => $link['found_on_page']
-							];
-						}
-					}
-				} catch (\Exception $e) {
-					// Fallback to single link checking if batch fails
-					foreach ($host_batch as $link) {
-						$result = $this->check_single_link($link['url'], 3);
-						$all_results[] = [
-							'url' => $link['url'],
-							'anchor_text' => $link['anchor_text'],
-							'status' => $result['status'],
-							'status_code' => $result['status_code'],
-							'status_text' => $result['status_text'],
-							'response_time' => $result['response_time'],
-							'found_on_page' => $link['found_on_page']
-						];
-					}
-				}
-			}
+			$all_results[] = [
+				'url' => $link['url'],
+				'anchor_text' => $link['anchor_text'],
+				'status' => $result['status'],
+				'status_code' => $result['status_code'],
+				'status_text' => $result['status_text'],
+				'response_time' => $result['response_time'],
+				'found_on_page' => $link['found_on_page']
+			];
 		}
 
 		return $all_results;

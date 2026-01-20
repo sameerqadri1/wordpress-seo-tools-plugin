@@ -166,7 +166,7 @@
         currentAjaxRequest = $.ajax({
             url: seoToolsConfig.ajax_url,
             type: 'POST',
-            timeout: 300000, // 5 minutes
+            timeout: 600000, // 10 minutes
             data: {
                 action: 'seo_check_links',
                 nonce: seoToolsConfig.nonces.links,
@@ -214,7 +214,7 @@
         currentAjaxRequest = $.ajax({
             url: seoToolsConfig.ajax_url,
             type: 'POST',
-            timeout: 300000, // 5 minutes
+            timeout: 600000, // 10 minutes
             data: {
                 action: 'seo_check_links',
                 nonce: seoToolsConfig.nonces.links,

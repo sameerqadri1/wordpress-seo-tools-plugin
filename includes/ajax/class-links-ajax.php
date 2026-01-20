@@ -111,9 +111,9 @@ class Links_Ajax
 			}
 		}
 
-		// 4. Run the crawl (synchronously)
+		// 4. Run the crawl (synchronously) - reduced to 25 pages to prevent timeout
 		$link_checker = new Link_Checker();
-		$result = $link_checker->crawl_website($url, 100, $resume_state);
+		$result = $link_checker->crawl_website($url, 25, $resume_state);
 
 		if (!$result['success']) {
 			// Delete state on error
