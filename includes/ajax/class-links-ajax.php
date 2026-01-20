@@ -92,6 +92,16 @@ class Links_Ajax
 
 		// For new scans (not continuations), verify reCAPTCHA, rate limit, and scan locks
 		if (!$resume_state) {
+			// Check if URL was already scanned by this user today
+			$url_check = $scan_lock_manager->can_scan_url($url);
+			if (!$url_check['allowed']) {
+				wp_send_json_error([
+					'message' => $url_check['message'],
+					'code' => $url_check['code']
+				]);
+				return;
+			}
+
 			// Check concurrent scan limits
 			$scan_lock_check = $scan_lock_manager->can_start_scan();
 			if (!$scan_lock_check['allowed']) {
@@ -184,6 +194,9 @@ class Links_Ajax
 
 			// Release scan lock (scan complete)
 			$scan_lock_manager->release_lock();
+
+			// Record that this URL was scanned (prevent duplicate scans)
+			$scan_lock_manager->record_scanned_url($url);
 
 			// Cache the final result
 			$cache_key = $cache_manager->generate_cache_key('links', ['url' => $url]);

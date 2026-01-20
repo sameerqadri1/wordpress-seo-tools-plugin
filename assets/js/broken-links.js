@@ -178,6 +178,9 @@
             scanMode = $('input[name="scan_mode"]:checked').val() || 'full';
         }
         
+        // Determine if this is a new scan or continuation
+        const isNewScan = !currentResults || recaptchaResponse !== '';
+        
         const $btn = $('#check-btn');
         $btn.prop('disabled', true);
         $btn.find('.btn-text').hide();
@@ -197,11 +200,21 @@
         $('#cancel-scan-btn').show().prop('disabled', false).text('Cancel Scan');
         $('#continue-prompt').hide();
         
-        // Reset progress on first scan (not continuations)
-        if (!currentResults) {
+        // ALWAYS reset progress for new scans (not continuations)
+        if (isNewScan) {
+            // Clear all previous data
+            currentResults = null;
+            totalPagesScanned = 0;
+            totalLinksChecked = 0;
+            totalBrokenLinks = 0;
+            estimatedTotalPages = 0;
+            
+            // Reset and start progress
             resetProgressBar();
-            // Start estimated progress
             startEstimatedProgress();
+            
+            // Reset timer
+            scanStartTime = Date.now();
         }
         
         // Start timer
@@ -314,15 +327,15 @@
         // Update progress bar
         updateProgressBar(currentResults);
         
-        // Display current results (show accumulated progress)
-        displayResults(currentResults);
-        
         if (data.has_more && autoContinueEnabled && scanMode === 'full') {
-            // AUTO-CONTINUE: Automatically continue scanning
+            // AUTO-CONTINUE: Keep scanning, DON'T show results yet
             $('#scan-status-text').html(
                 `✓ Scanned <strong>${data.pages_crawled}</strong> pages &middot; ` +
                 `<span style="color: #10b981;">Auto-continuing...</span>`
             );
+            
+            // Keep results hidden during auto-continue
+            $('#link-results').hide();
             
             // Wait 500ms before next chunk (brief pause to show progress)
             setTimeout(function() {
@@ -344,13 +357,16 @@
             );
             $('#continue-prompt').show();
             
+            // Show accumulated results so far
+            displayResults(currentResults);
+            
             // Re-enable check button
             const $btn = $('#check-btn');
             $btn.prop('disabled', false);
             $btn.find('.btn-text').show();
             $btn.find('.btn-loader').hide();
         } else {
-            // Scan complete!
+            // Scan 100% COMPLETE! Now show results
             stopTimer();
             $('#loading-message').hide();
             $('#cancel-scan-btn').hide();
@@ -360,6 +376,9 @@
             
             // Update progress to 100%
             updateProgressBar({...currentResults, has_more: false});
+            
+            // NOW display final results and scroll to them
+            displayResults(currentResults);
             
             // Re-enable check button
             const $btn = $('#check-btn');
@@ -423,23 +442,37 @@
     }
     
     /**
-     * Reset to initial state
+     * Reset to initial state (complete cleanup)
      */
     function resetToInitialState() {
+        // Stop all intervals
         stopTimer();
+        stopEstimatedProgress();
+        
+        // Reset progress bar and all progress variables
         resetProgressBar();
         
+        // Hide all UI elements
         $('#loading-message').hide();
         $('#cancel-scan-btn').hide();
         $('#continue-prompt').hide();
         $('#link-results').hide();
+        $('#error-message').hide();
         
+        // Clear all state variables
         currentResults = null;
         currentUrl = null;
         currentState = STATE.IDLE;
         scanStartTime = null;
         autoContinueEnabled = true;
+        totalPagesScanned = 0;
+        totalLinksChecked = 0;
+        totalBrokenLinks = 0;
+        estimatedTotalPages = 0;
+        currentEstimatedProgress = 0;
+        realProgressReceived = false;
         
+        // Re-enable form
         const $btn = $('#check-btn');
         $btn.prop('disabled', false);
         $btn.find('.btn-text').show();

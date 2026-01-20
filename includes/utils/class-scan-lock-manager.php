@@ -262,4 +262,99 @@ class Scan_Lock_Manager
 			'active_users' => count($active_list)
 		];
 	}
+
+	/**
+	 * Check if URL was already scanned by this user today
+	 *
+	 * @param string $url URL to check
+	 * @return array ['allowed' => bool, 'message' => string, 'code' => string]
+	 * @since 1.0.0
+	 */
+	public function can_scan_url(string $url): array
+	{
+		// Normalize URL for consistent comparison
+		$normalized_url = $this->normalize_url_for_tracking($url);
+		$user_id = $this->get_user_identifier();
+
+		// Get scanned URLs for this user today
+		$scanned_urls_key = 'seo_scanned_urls_' . $user_id;
+		$scanned_urls = get_transient($scanned_urls_key);
+
+		if (!is_array($scanned_urls)) {
+			$scanned_urls = [];
+		}
+
+		// Check if this URL was already scanned
+		if (in_array($normalized_url, $scanned_urls, true)) {
+			return [
+				'allowed' => false,
+				'message' => 'You have already scanned this website today. Please try a different URL or wait until tomorrow.',
+				'code' => 'URL_ALREADY_SCANNED'
+			];
+		}
+
+		return [
+			'allowed' => true,
+			'message' => 'URL can be scanned',
+			'code' => 'OK'
+		];
+	}
+
+	/**
+	 * Record that a URL was scanned by this user
+	 *
+	 * @param string $url URL that was scanned
+	 * @return void
+	 * @since 1.0.0
+	 */
+	public function record_scanned_url(string $url): void
+	{
+		$normalized_url = $this->normalize_url_for_tracking($url);
+		$user_id = $this->get_user_identifier();
+
+		// Get existing scanned URLs
+		$scanned_urls_key = 'seo_scanned_urls_' . $user_id;
+		$scanned_urls = get_transient($scanned_urls_key);
+
+		if (!is_array($scanned_urls)) {
+			$scanned_urls = [];
+		}
+
+		// Add this URL to the list
+		if (!in_array($normalized_url, $scanned_urls, true)) {
+			$scanned_urls[] = $normalized_url;
+		}
+
+		// Store until end of day (resets at midnight)
+		$seconds_until_midnight = strtotime('tomorrow') - time();
+		set_transient($scanned_urls_key, $scanned_urls, $seconds_until_midnight);
+	}
+
+	/**
+	 * Normalize URL for consistent tracking
+	 *
+	 * @param string $url URL to normalize
+	 * @return string Normalized URL
+	 * @since 1.0.0
+	 */
+	private function normalize_url_for_tracking(string $url): string
+	{
+		// Parse URL
+		$parsed = parse_url(strtolower(trim($url)));
+
+		if (!$parsed || !isset($parsed['host'])) {
+			return strtolower(trim($url));
+		}
+
+		// Remove www prefix for consistency
+		$host = $parsed['host'];
+		if (strpos($host, 'www.') === 0) {
+			$host = substr($host, 4);
+		}
+
+		// Build normalized URL (scheme + host, ignore path/query for site-level tracking)
+		$normalized = ($parsed['scheme'] ?? 'https') . '://' . $host;
+
+		return $normalized;
+	}
 }
