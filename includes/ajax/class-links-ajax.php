@@ -68,6 +68,11 @@ class Links_Ajax
 		$state_key = 'seo_scan_state_' . md5($url);
 		$resume_state = get_transient($state_key);
 
+		// Convert false to null for strict type compatibility
+		if ($resume_state === false) {
+			$resume_state = null;
+		}
+
 		// For new scans (not continuations), verify reCAPTCHA and rate limit
 		if (!$resume_state) {
 			// Verify reCAPTCHA
