@@ -1104,3 +1104,242 @@ textarea.form-control {
 .seo-tool-container button:hover {
     color: #ffffff !important;
 }
+
+/* ============================================
+   Content Strategist - New Sections
+   ============================================ */
+
+/* Relevancy Score Section */
+.relevancy-score-section {
+    background: linear-gradient(135deg, #1a1a1a 0%, #2a1a1a 100%);
+    border: 2px solid var(--primary-color);
+    border-radius: var(--radius);
+    padding: 30px;
+    margin-bottom: 30px;
+}
+
+.relevancy-score-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.relevancy-score-header h3 {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 1.4rem;
+}
+
+.relevancy-score-value {
+    font-size: 3rem;
+    font-weight: 700;
+}
+
+.score-number {
+    color: var(--primary-color);
+}
+
+.score-max {
+    color: var(--text-secondary);
+    font-size: 1.5rem;
+}
+
+.score-description {
+    color: var(--text-secondary);
+    margin-bottom: 20px;
+    font-size: 1.1rem;
+}
+
+.score-breakdown {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.score-item {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 15px;
+    border-radius: var(--radius);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.score-label {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.score-item .score-value {
+    color: var(--primary-color);
+    font-weight: 600;
+    font-size: 1.2rem;
+}
+
+/* SEO Elements Section */
+.seo-elements-section,
+.prominence-section,
+.readability-section {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    padding: 25px;
+    margin-bottom: 25px;
+}
+
+.seo-elements-section h3,
+.prominence-section h3,
+.readability-section h3 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    color: var(--text-primary);
+    font-size: 1.2rem;
+}
+
+.seo-checks-list,
+.prominence-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.seo-check-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 15px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: var(--radius);
+    border-left: 4px solid transparent;
+}
+
+.seo-check-item.working {
+    border-left-color: #10b981;
+    background: rgba(16, 185, 129, 0.1);
+}
+
+.seo-check-item.warning {
+    border-left-color: #f59e0b;
+    background: rgba(245, 158, 11, 0.1);
+}
+
+.seo-check-item.broken {
+    border-left-color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.check-icon {
+    font-weight: 700;
+    font-size: 1.2rem;
+}
+
+.seo-check-item.working .check-icon {
+    color: #10b981;
+}
+
+.seo-check-item.warning .check-icon {
+    color: #f59e0b;
+}
+
+.seo-check-item.broken .check-icon {
+    color: #ef4444;
+}
+
+.prominence-keyword {
+    background: rgba(182, 0, 22, 0.1);
+    padding: 15px;
+    border-radius: var(--radius);
+    margin-bottom: 15px;
+    border-left: 4px solid var(--primary-color);
+}
+
+.prominence-keyword strong {
+    color: var(--primary-color);
+    font-size: 1.1rem;
+}
+
+/* Readability Section */
+.readability-details {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.readability-main {
+    display: flex;
+    gap: 30px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.readability-score-box {
+    background: rgba(182, 0, 22, 0.1);
+    border: 2px solid var(--primary-color);
+    border-radius: var(--radius);
+    padding: 20px 30px;
+    text-align: center;
+    min-width: 150px;
+}
+
+.readability-score-value {
+    font-size: 3rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    line-height: 1;
+}
+
+.readability-score-value.score-good {
+    color: #10b981;
+}
+
+.readability-score-value.score-medium {
+    color: #f59e0b;
+}
+
+.readability-score-value.score-poor {
+    color: #ef4444;
+}
+
+.readability-score-label {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-top: 8px;
+}
+
+.readability-info p {
+    margin: 8px 0;
+    color: var(--text-secondary);
+}
+
+.readability-info strong {
+    color: var(--text-primary);
+}
+
+.readability-metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 15px;
+}
+
+.metric-item {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 15px;
+    border-radius: var(--radius);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.metric-label {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.metric-value {
+    color: var(--primary-color);
+    font-weight: 600;
+}

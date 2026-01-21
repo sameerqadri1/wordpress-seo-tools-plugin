@@ -87,8 +87,82 @@ if (!defined('ABSPATH')) {
 
 	<!-- Results Section -->
 	<div id="keyword-results" class="tool-results-card" style="display:none;">
-		<h2>📈 Keyword Analysis Results</h2>
+		<h2>📈 Content Strategy Analysis</h2>
 
+		<!-- Relevancy Score -->
+		<div class="relevancy-score-section">
+			<div class="relevancy-score-header">
+				<h3>🎯 Content Relevancy Score</h3>
+				<div class="relevancy-score-value">
+					<span id="relevancy-score" class="score-number">0</span>
+					<span class="score-max">/100</span>
+				</div>
+			</div>
+			<p class="score-description" id="score-status">Calculating...</p>
+			<div class="score-breakdown">
+				<div class="score-item">
+					<span class="score-label">Prominence</span>
+					<span class="score-value"><span id="score-prominence">0</span>/40</span>
+				</div>
+				<div class="score-item">
+					<span class="score-label">SEO Elements</span>
+					<span class="score-value"><span id="score-seo">0</span>/30</span>
+				</div>
+				<div class="score-item">
+					<span class="score-label">Keyword Density</span>
+					<span class="score-value"><span id="score-density">0</span>/20</span>
+				</div>
+				<div class="score-item">
+					<span class="score-label">Readability</span>
+					<span class="score-value"><span id="score-readability">0</span>/10</span>
+				</div>
+			</div>
+		</div>
+
+		<!-- SEO Elements Check -->
+		<div class="seo-elements-section">
+			<h3>🔍 SEO Elements Check</h3>
+			<div id="seo-elements-list" class="seo-checks-list">
+				<!-- Populated by JavaScript -->
+			</div>
+		</div>
+
+		<!-- Keyword Prominence -->
+		<div class="prominence-section">
+			<h3>📍 Keyword Prominence</h3>
+			<div id="prominence-list" class="prominence-list">
+				<!-- Populated by JavaScript -->
+			</div>
+		</div>
+
+		<!-- Readability Score -->
+		<div class="readability-section">
+			<h3>📖 Readability Score</h3>
+			<div class="readability-details">
+				<div class="readability-main">
+					<div class="readability-score-box">
+						<div class="readability-score-value" id="readability-score">0</div>
+						<div class="readability-score-label">Flesch Score</div>
+					</div>
+					<div class="readability-info">
+						<p><strong>Grade Level:</strong> <span id="readability-grade">-</span></p>
+						<p><strong>Status:</strong> <span id="readability-status">-</span></p>
+					</div>
+				</div>
+				<div class="readability-metrics">
+					<div class="metric-item">
+						<span class="metric-label">Avg Sentence Length:</span>
+						<span class="metric-value" id="avg-sentence-length">0 words</span>
+					</div>
+					<div class="metric-item">
+						<span class="metric-label">Avg Syllables/Word:</span>
+						<span class="metric-value" id="avg-syllables">0</span>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- Basic Stats -->
 		<div class="stats-row">
 			<div class="stat-box">
 				<div class="stat-value" id="total-words">0</div>
@@ -105,10 +179,12 @@ if (!defined('ABSPATH')) {
 		</div>
 
 		<!-- Phrase Length Filter -->
+		<h3 style="margin-top: 30px;">📊 Keyword Density Analysis</h3>
 		<div class="filter-tabs">
 			<button type="button" class="filter-tab active" data-length="1">1-Word</button>
 			<button type="button" class="filter-tab" data-length="2">2-Word</button>
 			<button type="button" class="filter-tab" data-length="3">3-Word</button>
+			<button type="button" class="filter-tab" data-length="4">4-Word (Long-tail)</button>
 		</div>
 
 		<!-- Results Table -->

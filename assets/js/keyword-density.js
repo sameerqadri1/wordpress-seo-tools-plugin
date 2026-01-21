@@ -153,19 +153,27 @@
                 return;
             }
             
-            // Analyze keywords
+            // Analyze keywords (1-4 word phrases)
             const results = {
                 totalWords: totalWords,
                 uniqueWords: 0,
                 keywords: {
                     1: analyzeNGrams(words, 1, totalWords),
                     2: analyzeNGrams(words, 2, totalWords),
-                    3: analyzeNGrams(words, 3, totalWords)
+                    3: analyzeNGrams(words, 3, totalWords),
+                    4: analyzeNGrams(words, 4, totalWords)  // Long-tail keywords
                 },
+                prominence: calculateProminence(cleanedText, words),
+                seoElements: analyzeSEOElements(text),
+                readability: calculateReadability(cleanedText),
+                relevancyScore: 0,  // Calculated after all metrics
                 analysisTime: ((performance.now() - startTime) / 1000).toFixed(2)
             };
             
             results.uniqueWords = results.keywords[1].length;
+            
+            // Calculate relevancy score
+            results.relevancyScore = calculateRelevancyScore(results);
             
             currentResults = results;
             displayResults(results);
@@ -177,19 +185,300 @@
     }
     
     /**
+     * Calculate keyword prominence (first 100 words, headings, distribution)
+     */
+    function calculateProminence(cleanedText, words) {
+        const first100Words = words.slice(0, 100).join(' ');
+        const firstParagraph = cleanedText.split('.')[0] || '';
+        
+        // Get top keyword (most frequent 2-3 word phrase)
+        const topKeyword = getTopKeyword(words);
+        
+        const prominence = {
+            topKeyword: topKeyword,
+            inFirst100: first100Words.includes(topKeyword),
+            inFirstParagraph: firstParagraph.includes(topKeyword),
+            keywordPosition: first100Words.indexOf(topKeyword),
+            distribution: calculateDistribution(cleanedText, topKeyword),
+            score: 0
+        };
+        
+        // Calculate prominence score (0-40)
+        if (prominence.inFirst100) prominence.score += 20;
+        if (prominence.inFirstParagraph) prominence.score += 10;
+        if (prominence.distribution.isEven) prominence.score += 10;
+        
+        return prominence;
+    }
+    
+    /**
+     * Get top keyword (most frequent 2-word phrase)
+     */
+    function getTopKeyword(words) {
+        const ngrams = {};
+        
+        // Build 2-word phrases
+        for (let i = 0; i <= words.length - 2; i++) {
+            if (words[i].length >= 3 && words[i+1].length >= 3) {
+                const phrase = words[i] + ' ' + words[i+1];
+                ngrams[phrase] = (ngrams[phrase] || 0) + 1;
+            }
+        }
+        
+        // Get top phrase
+        let topPhrase = '';
+        let maxCount = 0;
+        
+        for (const [phrase, count] of Object.entries(ngrams)) {
+            if (count > maxCount) {
+                maxCount = count;
+                topPhrase = phrase;
+            }
+        }
+        
+        return topPhrase || words[0] || '';
+    }
+    
+    /**
+     * Calculate keyword distribution (beginning/middle/end)
+     */
+    function calculateDistribution(text, keyword) {
+        const length = text.length;
+        const beginning = text.substring(0, length * 0.25);
+        const middle = text.substring(length * 0.25, length * 0.75);
+        const end = text.substring(length * 0.75);
+        
+        const inBeginning = beginning.includes(keyword);
+        const inMiddle = middle.includes(keyword);
+        const inEnd = end.includes(keyword);
+        const isEven = inBeginning && inMiddle && inEnd;
+        
+        return {
+            inBeginning,
+            inMiddle,
+            inEnd,
+            isEven
+        };
+    }
+    
+    /**
+     * Analyze SEO elements (Title, Meta, H1, Alt)
+     */
+    function analyzeSEOElements(text) {
+        // Extract title tag
+        const titleMatch = text.match(/<title[^>]*>(.*?)<\/title>/i);
+        const title = titleMatch ? titleMatch[1] : '';
+        
+        // Extract meta description
+        const metaMatch = text.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']*)["']/i);
+        const meta = metaMatch ? metaMatch[1] : '';
+        
+        // Extract H1
+        const h1Match = text.match(/<h1[^>]*>(.*?)<\/h1>/gi);
+        const h1Text = h1Match ? h1Match[0].replace(/<[^>]*>/g, '') : '';
+        const h1Count = h1Match ? h1Match.length : 0;
+        
+        // Extract images with alt text
+        const imgMatches = text.match(/<img[^>]*>/gi) || [];
+        const totalImages = imgMatches.length;
+        const imagesWithAlt = imgMatches.filter(img => /alt=/i.test(img)).length;
+        
+        const elements = {
+            title: {
+                exists: title.length > 0,
+                text: title,
+                length: title.length,
+                lengthStatus: title.length >= 50 && title.length <= 60 ? 'optimal' : 
+                             title.length < 50 ? 'too-short' : 'too-long'
+            },
+            meta: {
+                exists: meta.length > 0,
+                text: meta,
+                length: meta.length,
+                lengthStatus: meta.length >= 150 && meta.length <= 160 ? 'optimal' : 
+                             meta.length < 150 ? 'too-short' : 'too-long'
+            },
+            h1: {
+                exists: h1Text.length > 0,
+                text: h1Text,
+                count: h1Count,
+                countStatus: h1Count === 1 ? 'optimal' : h1Count === 0 ? 'missing' : 'multiple'
+            },
+            alt: {
+                totalImages: totalImages,
+                imagesWithAlt: imagesWithAlt,
+                coverage: totalImages > 0 ? Math.round((imagesWithAlt / totalImages) * 100) : 0
+            },
+            score: 0
+        };
+        
+        // Calculate SEO elements score (0-30)
+        // Note: Keyword presence will be checked in displayResults with user's top keyword
+        if (elements.title.exists && elements.title.lengthStatus === 'optimal') elements.score += 10;
+        if (elements.h1.exists && elements.h1.countStatus === 'optimal') elements.score += 10;
+        if (elements.meta.exists && elements.meta.lengthStatus === 'optimal') elements.score += 5;
+        if (elements.alt.coverage >= 80) elements.score += 5;
+        
+        return elements;
+    }
+    
+    /**
+     * Calculate readability score (Flesch Reading Ease)
+     */
+    function calculateReadability(text) {
+        const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+        const words = text.split(/\s+/).filter(w => w.length > 0);
+        const totalSentences = sentences.length;
+        const totalWords = words.length;
+        
+        // Count syllables (approximation)
+        let totalSyllables = 0;
+        words.forEach(word => {
+            totalSyllables += countSyllables(word);
+        });
+        
+        // Calculate averages
+        const avgSentenceLength = totalWords / (totalSentences || 1);
+        const avgSyllablesPerWord = totalSyllables / (totalWords || 1);
+        
+        // Flesch Reading Ease formula
+        const fleschScore = 206.835 - (1.015 * avgSentenceLength) - (84.6 * avgSyllablesPerWord);
+        const clampedScore = Math.max(0, Math.min(100, fleschScore));
+        
+        // Determine grade level and status
+        let gradeLevel = '';
+        let status = '';
+        
+        if (clampedScore >= 90) {
+            gradeLevel = '5th grade';
+            status = 'very-easy';
+        } else if (clampedScore >= 80) {
+            gradeLevel = '6th grade';
+            status = 'easy';
+        } else if (clampedScore >= 70) {
+            gradeLevel = '7th grade';
+            status = 'fairly-easy';
+        } else if (clampedScore >= 60) {
+            gradeLevel = '8th-9th grade';
+            status = 'standard';
+        } else if (clampedScore >= 50) {
+            gradeLevel = '10th-12th grade';
+            status = 'fairly-difficult';
+        } else if (clampedScore >= 30) {
+            gradeLevel = 'College';
+            status = 'difficult';
+        } else {
+            gradeLevel = 'College Graduate';
+            status = 'very-difficult';
+        }
+        
+        return {
+            fleschScore: Math.round(clampedScore),
+            gradeLevel: gradeLevel,
+            status: status,
+            avgSentenceLength: Math.round(avgSentenceLength * 10) / 10,
+            avgSyllablesPerWord: Math.round(avgSyllablesPerWord * 10) / 10,
+            totalSentences: totalSentences,
+            totalWords: totalWords,
+            score: Math.min(Math.round(clampedScore / 10), 10)  // 0-10 points
+        };
+    }
+    
+    /**
+     * Count syllables in a word (approximation)
+     */
+    function countSyllables(word) {
+        word = word.toLowerCase();
+        if (word.length <= 3) return 1;
+        
+        word = word.replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/, '');
+        word = word.replace(/^y/, '');
+        const syllables = word.match(/[aeiouy]{1,2}/g);
+        
+        return syllables ? syllables.length : 1;
+    }
+    
+    /**
+     * Calculate overall relevancy score (0-100)
+     */
+    function calculateRelevancyScore(results) {
+        const prominenceScore = results.prominence.score;  // 0-40
+        const seoScore = results.seoElements.score;         // 0-30
+        const readabilityScore = results.readability.score; // 0-10
+        
+        // Density score (0-20) - based on top keyword density
+        const topKeywordData = results.keywords[2][0] || results.keywords[1][0];
+        const density = topKeywordData ? parseFloat(topKeywordData.density) : 0;
+        
+        let densityScore = 0;
+        if (density >= 0.5 && density <= 2.0) {
+            densityScore = 20;  // Optimal
+        } else if (density < 0.5) {
+            densityScore = 10;  // Too low
+        } else if (density <= 3.0) {
+            densityScore = 15;  // Warning range
+        } else {
+            densityScore = 0;   // Too high (keyword stuffing)
+        }
+        
+        const total = prominenceScore + seoScore + densityScore + readabilityScore;
+        
+        return {
+            total: total,
+            breakdown: {
+                prominence: prominenceScore,
+                seoElements: seoScore,
+                density: densityScore,
+                readability: readabilityScore
+            }
+        };
+    }
+    
+    /**
      * Analyze n-grams (phrases)
      */
     function analyzeNGrams(words, n, totalWords) {
         const ngrams = {};
         
-        // Stop words list - words to exclude from analysis
+        // Expanded stop words list (100+ words) - Modern SEO entities
         const stopWords = [
-            "is", "am", "are", "was", "were", "be", "been", "being",
+            // Articles
             "the", "a", "an",
-            "what", "how", "where", "when", "why", "which", "who",
+            // Pronouns
+            "i", "you", "he", "she", "it", "we", "they", "me", "him", "her", "us", "them",
+            "my", "your", "his", "her", "its", "our", "their", "mine", "yours", "hers", "ours", "theirs",
+            "myself", "yourself", "himself", "herself", "itself", "ourselves", "yourselves", "themselves",
+            // Common verbs
+            "is", "am", "are", "was", "were", "be", "been", "being",
+            "have", "has", "had", "having",
+            "do", "does", "did", "doing", "done",
+            "will", "would", "could", "should", "may", "might", "must", "can", "cannot",
+            "get", "got", "getting", "go", "went", "going", "gone",
+            "come", "came", "coming",
+            "see", "saw", "seen", "seeing",
+            "know", "knew", "known", "knowing",
+            "think", "thought", "thinking",
+            "take", "took", "taken", "taking",
+            "give", "gave", "given", "giving",
+            "make", "made", "making",
+            "say", "said", "saying",
+            // Question words
+            "what", "how", "where", "when", "why", "which", "who", "whom", "whose",
+            // Demonstratives
             "this", "that", "these", "those",
-            "and", "or", "but", "if", "then",
-            "in", "on", "at", "to", "from", "by", "for", "with", "of"
+            // Conjunctions
+            "and", "or", "but", "if", "then", "than", "so", "because", "since", "while", "although", "though",
+            // Prepositions
+            "in", "on", "at", "to", "from", "by", "for", "with", "of", "about", "into", "onto", "upon",
+            "over", "under", "above", "below", "between", "among", "through", "during", "before", "after",
+            // Common adjectives/adverbs (clutter words)
+            "very", "really", "quite", "just", "only", "also", "too", "even", "still", "already", "yet",
+            "actually", "basically", "literally", "probably", "maybe", "perhaps", "certainly", "definitely",
+            "good", "bad", "new", "old", "big", "small", "long", "short", "high", "low", "great", "little",
+            // Numbers (common)
+            "one", "two", "three", "first", "second", "third",
+            // Common filler words
+            "well", "now", "here", "there", "some", "any", "all", "both", "each", "every", "other", "another", "such", "same"
         ];
         
         // Filter words: remove stop words and words < 3 characters
@@ -272,10 +561,22 @@
      * Display analysis results
      */
     function displayResults(results) {
-        // Update stats
+        // Update basic stats
         $('#total-words').text(formatNumber(results.totalWords));
         $('#unique-words').text(formatNumber(results.uniqueWords));
         $('#analysis-time').text(results.analysisTime + 's');
+        
+        // Display relevancy score
+        displayRelevancyScore(results.relevancyScore);
+        
+        // Display SEO elements
+        displaySEOElements(results.seoElements, results.prominence.topKeyword);
+        
+        // Display prominence
+        displayProminence(results.prominence);
+        
+        // Display readability
+        displayReadability(results.readability);
         
         // Get keywords for current phrase length
         const keywords = results.keywords[currentPhraseLength];
@@ -321,6 +622,161 @@
         $('html, body').animate({
             scrollTop: $('#keyword-results').offset().top - 100
         }, 500);
+    }
+    
+    /**
+     * Display relevancy score
+     */
+    function displayRelevancyScore(score) {
+        $('#relevancy-score').text(score.total);
+        $('#score-prominence').text(score.breakdown.prominence);
+        $('#score-seo').text(score.breakdown.seoElements);
+        $('#score-density').text(score.breakdown.density);
+        $('#score-readability').text(score.breakdown.readability);
+        
+        // Update score status
+        let scoreStatus = '';
+        if (score.total >= 80) {
+            scoreStatus = 'Excellent - Well optimized content';
+        } else if (score.total >= 60) {
+            scoreStatus = 'Good - Room for improvement';
+        } else if (score.total >= 40) {
+            scoreStatus = 'Fair - Needs optimization';
+        } else {
+            scoreStatus = 'Poor - Requires significant work';
+        }
+        $('#score-status').text(scoreStatus);
+    }
+    
+    /**
+     * Display SEO elements
+     */
+    function displaySEOElements(elements, topKeyword) {
+        const $container = $('#seo-elements-list');
+        $container.empty();
+        
+        let html = '';
+        
+        // Title tag
+        if (elements.title.exists) {
+            const hasKeyword = elements.title.text.toLowerCase().includes(topKeyword.toLowerCase());
+            const icon = hasKeyword ? '✓' : '✗';
+            const cssClass = hasKeyword ? 'working' : 'broken';
+            html += `<div class="seo-check-item ${cssClass}">
+                <span class="check-icon">${icon}</span>
+                <span>Keyword in Title tag (${elements.title.length} chars - ${elements.title.lengthStatus})</span>
+            </div>`;
+        } else {
+            html += `<div class="seo-check-item broken">
+                <span class="check-icon">✗</span>
+                <span>Title tag missing</span>
+            </div>`;
+        }
+        
+        // H1 tag
+        if (elements.h1.exists) {
+            const hasKeyword = elements.h1.text.toLowerCase().includes(topKeyword.toLowerCase());
+            const icon = hasKeyword && elements.h1.countStatus === 'optimal' ? '✓' : '⚠';
+            const cssClass = hasKeyword && elements.h1.countStatus === 'optimal' ? 'working' : 'warning';
+            const countText = elements.h1.countStatus === 'multiple' ? ` (${elements.h1.count} H1s - should be 1)` : '';
+            html += `<div class="seo-check-item ${cssClass}">
+                <span class="check-icon">${icon}</span>
+                <span>Keyword in H1 tag${countText}</span>
+            </div>`;
+        } else {
+            html += `<div class="seo-check-item broken">
+                <span class="check-icon">✗</span>
+                <span>H1 tag missing</span>
+            </div>`;
+        }
+        
+        // Meta description
+        if (elements.meta.exists) {
+            const hasKeyword = elements.meta.text.toLowerCase().includes(topKeyword.toLowerCase());
+            const icon = hasKeyword ? '✓' : '⚠';
+            const cssClass = hasKeyword ? 'working' : 'warning';
+            html += `<div class="seo-check-item ${cssClass}">
+                <span class="check-icon">${icon}</span>
+                <span>Keyword in Meta description (${elements.meta.length} chars - ${elements.meta.lengthStatus})</span>
+            </div>`;
+        } else {
+            html += `<div class="seo-check-item warning">
+                <span class="check-icon">⚠</span>
+                <span>Meta description missing</span>
+            </div>`;
+        }
+        
+        // Alt text
+        if (elements.alt.totalImages > 0) {
+            const icon = elements.alt.coverage >= 80 ? '✓' : '⚠';
+            const cssClass = elements.alt.coverage >= 80 ? 'working' : 'warning';
+            html += `<div class="seo-check-item ${cssClass}">
+                <span class="check-icon">${icon}</span>
+                <span>Alt text coverage: ${elements.alt.coverage}% (${elements.alt.imagesWithAlt}/${elements.alt.totalImages} images)</span>
+            </div>`;
+        }
+        
+        $container.html(html);
+    }
+    
+    /**
+     * Display prominence
+     */
+    function displayProminence(prominence) {
+        const $container = $('#prominence-list');
+        $container.empty();
+        
+        let html = `<p class="prominence-keyword">Primary keyword: <strong>"${escapeHtml(prominence.topKeyword)}"</strong></p>`;
+        
+        // First 100 words
+        const first100Icon = prominence.inFirst100 ? '✓' : '✗';
+        const first100Class = prominence.inFirst100 ? 'working' : 'broken';
+        html += `<div class="seo-check-item ${first100Class}">
+            <span class="check-icon">${first100Icon}</span>
+            <span>Found in first 100 words</span>
+        </div>`;
+        
+        // First paragraph
+        const firstParaIcon = prominence.inFirstParagraph ? '✓' : '✗';
+        const firstParaClass = prominence.inFirstParagraph ? 'working' : 'broken';
+        html += `<div class="seo-check-item ${firstParaClass}">
+            <span class="check-icon">${firstParaIcon}</span>
+            <span>Found in first paragraph</span>
+        </div>`;
+        
+        // Distribution
+        const distIcon = prominence.distribution.isEven ? '✓' : '⚠';
+        const distClass = prominence.distribution.isEven ? 'working' : 'warning';
+        const distText = prominence.distribution.isEven ? 'Even distribution' : 'Uneven distribution';
+        html += `<div class="seo-check-item ${distClass}">
+            <span class="check-icon">${distIcon}</span>
+            <span>${distText} (Beginning ${prominence.distribution.inBeginning ? '✓' : '✗'} | Middle ${prominence.distribution.inMiddle ? '✓' : '✗'} | End ${prominence.distribution.inEnd ? '✓' : '✗'})</span>
+        </div>`;
+        
+        $container.html(html);
+    }
+    
+    /**
+     * Display readability
+     */
+    function displayReadability(readability) {
+        $('#readability-score').text(readability.fleschScore);
+        $('#readability-grade').text(readability.gradeLevel);
+        $('#readability-status').text(readability.status.replace('-', ' '));
+        $('#avg-sentence-length').text(readability.avgSentenceLength + ' words');
+        $('#avg-syllables').text(readability.avgSyllablesPerWord);
+        
+        // Update readability status class
+        const $scoreElem = $('#readability-score');
+        $scoreElem.removeClass('score-good score-medium score-poor');
+        
+        if (readability.fleschScore >= 60) {
+            $scoreElem.addClass('score-good');
+        } else if (readability.fleschScore >= 40) {
+            $scoreElem.addClass('score-medium');
+        } else {
+            $scoreElem.addClass('score-poor');
+        }
     }
     
     /**
