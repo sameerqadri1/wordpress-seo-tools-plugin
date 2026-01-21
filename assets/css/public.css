@@ -1109,6 +1109,126 @@ textarea.form-control {
    Content Strategist - New Sections
    ============================================ */
 
+/* Stemming Warnings Section */
+.stemming-warnings-section {
+    background: rgba(245, 158, 11, 0.1);
+    border: 2px solid #f59e0b;
+    border-radius: var(--radius);
+    padding: 25px;
+    margin-bottom: 25px;
+}
+
+.stemming-warnings-section h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: #f59e0b;
+    font-size: 1.2rem;
+}
+
+.warning-intro {
+    color: var(--text-secondary);
+    margin-bottom: 20px;
+    font-size: 0.95rem;
+}
+
+.warnings-list {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.warning-item {
+    display: flex;
+    gap: 15px;
+    padding: 15px;
+    background: rgba(245, 158, 11, 0.15);
+    border-radius: var(--radius);
+    border-left: 4px solid #f59e0b;
+}
+
+.warning-icon {
+    font-size: 1.5rem;
+    color: #f59e0b;
+    flex-shrink: 0;
+}
+
+.warning-content {
+    flex: 1;
+}
+
+.warning-content strong {
+    color: #f59e0b;
+    display: block;
+    margin-bottom: 8px;
+}
+
+.warning-content p {
+    color: var(--text-primary);
+    margin: 8px 0;
+    line-height: 1.6;
+}
+
+.warning-details {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+/* Filter Controls (Tabs + Toggle) */
+.filter-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+/* Stemmed View Toggle */
+.stemmed-toggle {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    padding: 15px 20px;
+}
+
+.toggle-label {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.toggle-label input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    margin-right: 10px;
+}
+
+.toggle-text {
+    color: var(--text-primary);
+    font-weight: 600;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+}
+
+.toggle-help {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    margin-left: 30px;
+}
+
+.toggle-label input[type="checkbox"]:checked + .toggle-text {
+    color: var(--primary-color);
+}
+
+/* ============================================
+   Content Strategist - Existing Sections
+   ============================================ */
+
 /* Relevancy Score Section */
 .relevancy-score-section {
     background: linear-gradient(135deg, #1a1a1a 0%, #2a1a1a 100%);

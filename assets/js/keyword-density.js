@@ -115,7 +115,23 @@
             $(this).addClass('active');
             
             currentPhraseLength = length;
+            
+            // Hide stemmed toggle for 4-word phrases (not computed)
+            if (length === 4) {
+                $('#stemmed-toggle-wrapper').hide();
+                $('#view-stemmed').prop('checked', false);
+            } else {
+                $('#stemmed-toggle-wrapper').show();
+            }
+            
             displayResults(currentResults);
+        });
+        
+        // Stemmed view toggle
+        $('#view-stemmed').on('change', function() {
+            if (currentResults) {
+                displayResults(currentResults);
+            }
         });
     }
     
@@ -163,6 +179,11 @@
                     3: analyzeNGrams(words, 3, totalWords),
                     4: analyzeNGrams(words, 4, totalWords)  // Long-tail keywords
                 },
+                stemmedKeywords: {
+                    1: groupByStem(analyzeNGrams(words, 1, totalWords)),
+                    2: groupByStem(analyzeNGrams(words, 2, totalWords)),
+                    3: groupByStem(analyzeNGrams(words, 3, totalWords))
+                },
                 prominence: calculateProminence(cleanedText, words),
                 seoElements: analyzeSEOElements(text),
                 readability: calculateReadability(cleanedText),
@@ -174,6 +195,9 @@
             
             // Calculate relevancy score
             results.relevancyScore = calculateRelevancyScore(results);
+            
+            // Check for stemming warnings (over-optimization via variants)
+            results.stemmingWarnings = checkStemmingWarnings(results.stemmedKeywords);
             
             currentResults = results;
             displayResults(results);
@@ -399,6 +423,134 @@
     }
     
     /**
+     * Porter Stemmer - Reduce words to their root form
+     * (Simplified implementation for common English word patterns)
+     */
+    function stem(word) {
+        word = word.toLowerCase();
+        
+        // Step 1: Remove common suffixes
+        // Plurals and possessives
+        word = word.replace(/^(.+?)('s|'s)$/,'$1');  // Remove possessive
+        
+        // Handle -ies, -es, -s
+        if (word.match(/.*[^aeiou]ies$/)) {
+            word = word.replace(/ies$/, 'y');  // companies -> company
+        } else if (word.match(/.*(ss|zz)es$/)) {
+            word = word.replace(/es$/, '');  // dresses -> dress
+        } else if (word.match(/.*[^s]s$/)) {
+            word = word.replace(/s$/, '');  // cats -> cat (but not ss)
+        }
+        
+        // -ing, -ed endings
+        if (word.match(/.*ing$/)) {
+            if (word.match(/.{4,}ing$/)) {  // At least 4 chars before -ing
+                word = word.replace(/ing$/, '');  // running -> runn
+                // Handle doubled consonants
+                if (word.match(/(.)\1$/)) {
+                    word = word.slice(0, -1);  // runn -> run
+                }
+            }
+        }
+        
+        if (word.match(/.*ed$/)) {
+            if (word.match(/.{3,}ed$/)) {  // At least 3 chars before -ed
+                word = word.replace(/ed$/, '');  // worked -> work
+                // Handle doubled consonants
+                if (word.match(/(.)\1$/)) {
+                    word = word.slice(0, -1);
+                }
+            }
+        }
+        
+        // -er, -est (comparatives)
+        word = word.replace(/er$/, '');  // faster -> fast
+        word = word.replace(/est$/, '');  // fastest -> fast
+        
+        // -ly (adverbs)
+        word = word.replace(/ly$/, '');  // quickly -> quick
+        
+        // -tion, -sion, -ation
+        word = word.replace(/ation$/, 'ate');  // optimization -> optim
+        word = word.replace(/tion$/, '');  // creation -> creat
+        word = word.replace(/sion$/, '');  // decision -> deci
+        
+        // -ness, -ment, -ful, -less
+        word = word.replace(/ness$/, '');  // happiness -> happi
+        word = word.replace(/ment$/, '');  // development -> develop
+        word = word.replace(/ful$/, '');  // beautiful -> beauti
+        word = word.replace(/less$/, '');  // helpless -> help
+        
+        return word;
+    }
+    
+    /**
+     * Group keywords by stem (root form)
+     * Shows both individual variants and stemmed totals
+     */
+    function groupByStem(keywords) {
+        const stemGroups = {};
+        const stemToVariants = {};
+        
+        keywords.forEach(kw => {
+            const words = kw.phrase.split(' ');
+            const stemmedPhrase = words.map(w => stem(w)).join(' ');
+            
+            if (!stemGroups[stemmedPhrase]) {
+                stemGroups[stemmedPhrase] = {
+                    stemmedPhrase: stemmedPhrase,
+                    originalPhrase: kw.phrase,
+                    count: 0,
+                    density: 0,
+                    variants: []
+                };
+                stemToVariants[stemmedPhrase] = [];
+            }
+            
+            stemGroups[stemmedPhrase].count += kw.count;
+            stemGroups[stemmedPhrase].density = (parseFloat(stemGroups[stemmedPhrase].density) + parseFloat(kw.density)).toFixed(2);
+            stemGroups[stemmedPhrase].variants.push({
+                phrase: kw.phrase,
+                count: kw.count,
+                density: kw.density
+            });
+            
+            stemToVariants[stemmedPhrase].push(kw.phrase);
+        });
+        
+        // Convert to array and sort by count
+        return Object.values(stemGroups)
+            .sort((a, b) => b.count - a.count);
+    }
+    
+    /**
+     * Check for stemming warnings (variants causing over-optimization)
+     */
+    function checkStemmingWarnings(stemmedKeywords) {
+        const warnings = [];
+        
+        // Check 1-word stems for over-optimization
+        stemmedKeywords[1].forEach(stem => {
+            const density = parseFloat(stem.density);
+            const variantCount = stem.variants.length;
+            
+            // Warning: Multiple variants with combined high density
+            if (variantCount >= 3 && density > 2.5) {
+                warnings.push({
+                    type: 'over-optimization',
+                    stemmed: stem.stemmedPhrase,
+                    variants: stem.variants.map(v => v.phrase).join(', '),
+                    totalDensity: density,
+                    variantCount: variantCount,
+                    message: `"${stem.originalPhrase}" and its variants (${stem.variants.map(v => v.phrase).join(', ')}) appear ${stem.count} times (${density}% density). Google may see this as over-optimization.`
+                });
+            }
+        });
+        
+        return warnings;
+    }
+    
+    /**
      * Calculate overall relevancy score (0-100)
      */
     function calculateRelevancyScore(results) {
@@ -578,17 +730,24 @@
         // Display readability
         displayReadability(results.readability);
         
+        // Display stemming warnings (if any)
+        displayStemmingWarnings(results.stemmingWarnings);
+        
         // Get keywords for current phrase length
         const keywords = results.keywords[currentPhraseLength];
+        const stemmedKeywords = results.stemmedKeywords[currentPhraseLength];
         
-        // Build table
+        // Build table - show individual or stemmed based on toggle
         const $tbody = $('#keywords-tbody');
         $tbody.empty();
         
-        if (!keywords || keywords.length === 0) {
+        const showStemmed = $('#view-stemmed').is(':checked');
+        const dataToShow = showStemmed && currentPhraseLength <= 3 ? stemmedKeywords : keywords;
+        
+        if (!dataToShow || dataToShow.length === 0) {
             $tbody.append('<tr><td colspan="4" style="text-align:center;">No keywords found</td></tr>');
         } else {
-            keywords.slice(0, 20).forEach(function(kw) {
+            dataToShow.slice(0, 20).forEach(function(kw) {
                 const density = parseFloat(kw.density);
                 let status, statusClass;
                 
@@ -603,9 +762,16 @@
                     statusClass = 'broken';
                 }
                 
+                // For stemmed view, show variants
+                let phraseDisplay = escapeHtml(kw.phrase || kw.originalPhrase);
+                if (showStemmed && kw.variants && kw.variants.length > 1) {
+                    const variantList = kw.variants.map(v => escapeHtml(v.phrase)).join(', ');
+                    phraseDisplay += `<br><small style="color: #9ca3af;">Variants: ${variantList}</small>`;
+                }
+                
                 const row = `
                     <tr>
-                        <td>${escapeHtml(kw.phrase)}</td>
+                        <td>${phraseDisplay}</td>
                         <td>${kw.count}</td>
                         <td>${kw.density}%</td>
                         <td><span class="status-badge ${statusClass}">${status}</span></td>
@@ -777,6 +943,38 @@
         } else {
             $scoreElem.addClass('score-poor');
         }
+    }
+    
+    /**
+     * Display stemming warnings
+     */
+    function displayStemmingWarnings(warnings) {
+        const $container = $('#stemming-warnings');
+        
+        if (!warnings || warnings.length === 0) {
+            $container.hide();
+            return;
+        }
+        
+        $container.show();
+        const $list = $('#stemming-warnings-list');
+        $list.empty();
+        
+        warnings.forEach(warning => {
+            const html = `<div class="warning-item">
+                <span class="warning-icon">⚠</span>
+                <div class="warning-content">
+                    <strong>Keyword Variant Over-Optimization</strong>
+                    <p>${escapeHtml(warning.message)}</p>
+                    <div class="warning-details">
+                        <span>Root: "${escapeHtml(warning.stemmed)}"</span> | 
+                        <span>${warning.variantCount} variants</span> | 
+                        <span>Combined density: ${warning.totalDensity}%</span>
+                    </div>
+                </div>
+            </div>`;
+            $list.append(html);
+        });
     }
     
     /**

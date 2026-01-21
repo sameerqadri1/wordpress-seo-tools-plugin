@@ -162,6 +162,15 @@ if (!defined('ABSPATH')) {
 			</div>
 		</div>
 
+		<!-- Stemming Warnings -->
+		<div id="stemming-warnings" class="stemming-warnings-section" style="display:none;">
+			<h3>🔬 Keyword Variant Analysis</h3>
+			<p class="warning-intro">Google groups word variations (running, runs, runner) as one concept. These warnings show when variants combine to create over-optimization:</p>
+			<div id="stemming-warnings-list" class="warnings-list">
+				<!-- Populated by JavaScript -->
+			</div>
+		</div>
+
 		<!-- Basic Stats -->
 		<div class="stats-row">
 			<div class="stat-box">
@@ -180,11 +189,20 @@ if (!defined('ABSPATH')) {
 
 		<!-- Phrase Length Filter -->
 		<h3 style="margin-top: 30px;">📊 Keyword Density Analysis</h3>
-		<div class="filter-tabs">
-			<button type="button" class="filter-tab active" data-length="1">1-Word</button>
-			<button type="button" class="filter-tab" data-length="2">2-Word</button>
-			<button type="button" class="filter-tab" data-length="3">3-Word</button>
-			<button type="button" class="filter-tab" data-length="4">4-Word (Long-tail)</button>
+		<div class="filter-controls">
+			<div class="filter-tabs">
+				<button type="button" class="filter-tab active" data-length="1">1-Word</button>
+				<button type="button" class="filter-tab" data-length="2">2-Word</button>
+				<button type="button" class="filter-tab" data-length="3">3-Word</button>
+				<button type="button" class="filter-tab" data-length="4">4-Word (Long-tail)</button>
+			</div>
+			<div id="stemmed-toggle-wrapper" class="stemmed-toggle">
+				<label class="toggle-label">
+					<input type="checkbox" id="view-stemmed" />
+					<span class="toggle-text">Show Stemmed (Google's View)</span>
+					<span class="toggle-help">Groups word variations like "running", "runs", "runner"</span>
+				</label>
+			</div>
 		</div>
 
 		<!-- Results Table -->
