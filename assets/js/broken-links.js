@@ -236,6 +236,10 @@
             },
             success: function(response) {
                 if (response.success) {
+                    // Calculate actual elapsed time for this request
+                    if (scanStartTime) {
+                        response.data.actual_elapsed_time = Math.round((Date.now() - scanStartTime) / 1000);
+                    }
                     handleScanComplete(response.data, scanMode);
                 } else {
                     handleScanError(response.data.message || 'Scan failed');
@@ -307,6 +311,11 @@
      * Handle scan complete
      */
     function handleScanComplete(data, scanMode) {
+        // Calculate actual elapsed time from start
+        const actualElapsedTime = scanStartTime ? 
+            Math.round((Date.now() - scanStartTime) / 1000) : 
+            data.scan_time;
+        
         // Update accumulated results
         if (currentResults) {
             // Merge with previous results (continuation)
@@ -316,12 +325,13 @@
                 broken_links_count: data.broken_links_count,
                 broken_links: data.broken_links,
                 pages_crawled: data.pages_crawled,
-                scan_time: data.scan_time,
+                scan_time: actualElapsedTime,  // Use total elapsed time
                 estimated_total_pages: data.estimated_total_pages
             };
         } else {
             // First chunk results
             currentResults = data;
+            currentResults.scan_time = actualElapsedTime;  // Use actual elapsed time
         }
         
         // Update progress bar
@@ -373,6 +383,14 @@
             
             currentState = STATE.COMPLETE;
             loadRateLimitStatus();
+            
+            // Calculate TOTAL elapsed time (across all chunks)
+            const totalElapsedSeconds = scanStartTime ? 
+                Math.round((Date.now() - scanStartTime) / 1000) : 
+                currentResults.scan_time;
+            
+            // Update results with total elapsed time
+            currentResults.scan_time = totalElapsedSeconds;
             
             // Update progress to 100%
             updateProgressBar({...currentResults, has_more: false});
