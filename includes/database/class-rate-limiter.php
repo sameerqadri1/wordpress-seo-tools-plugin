@@ -396,7 +396,7 @@ class Rate_Limiter
     }
 
     /**
-     * Cache URL content for 1 hour
+     * Cache URL content for 15 minutes
      *
      * @param string $url URL being cached
      * @param string $text Extracted text content
@@ -411,7 +411,9 @@ class Rate_Limiter
         return set_transient($cache_key, [
             'text' => $text,
             'word_count' => $word_count,
-            'cached_at' => current_time('mysql')
-        ], 3600); // 1 hour
+            'cached_at' => current_time('mysql'),
+            'cached_timestamp' => time(),
+            'expires_at' => time() + 900  // 15 minutes from now
+        ], 900); // 15 minutes
     }
 }

@@ -78,6 +78,17 @@ if (!defined('ABSPATH')) {
 				<p class="form-help">We'll fetch and analyze the content from this URL</p>
 			</div>
 
+			<!-- Force Refresh Option -->
+			<div class="form-group">
+				<label class="checkbox-label">
+					<input type="checkbox" id="force-refresh" />
+					<span>Force fresh analysis (bypasses 15-minute cache)</span>
+				</label>
+				<p class="form-help" style="margin-top: 5px; font-size: 0.85em; color: var(--text-secondary);">
+					⚠ Uses your daily limit. Only check if content changed recently.
+				</p>
+			</div>
+
 			<!-- reCAPTCHA -->
 			<div class="form-group recaptcha-wrapper">
 				<div class="g-recaptcha" data-sitekey="<?php echo esc_attr(get_option('seo_tools_recaptcha_site_key')); ?>"></div>

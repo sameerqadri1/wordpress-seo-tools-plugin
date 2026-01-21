@@ -684,6 +684,9 @@
             return;
         }
         
+        // Check if user wants to force refresh
+        const forceRefresh = $('#force-refresh').is(':checked');
+        
         const $btn = $('#keyword-url-form button');
         $btn.prop('disabled', true);
         $btn.find('.btn-text').hide();
@@ -699,16 +702,21 @@
                 action: 'seo_fetch_url_content',
                 nonce: seoToolsConfig.nonces.keyword,
                 url: url,
-                'g-recaptcha-response': recaptchaResponse
+                'g-recaptcha-response': recaptchaResponse,
+                'force_refresh': forceRefresh
             },
             success: function(response) {
                 if (response.success) {
-                    // Show cache status if available
+                    // Show detailed cache status
                     if (response.data.cached) {
-                        showInfo('Content loaded from cache (updated ' + response.data.cached_at + ')');
+                        showCacheInfo(response.data.cache_age_minutes, response.data.cache_expires_minutes);
+                    } else if (forceRefresh) {
+                        showInfo('✅ Fresh content fetched successfully (bypassed cache)');
                     }
                     analyzeText(response.data.text);
                     resetRecaptcha();
+                    // Uncheck force refresh for next analysis
+                    $('#force-refresh').prop('checked', false);
                 } else {
                     showError(response.data.message || 'Failed to fetch URL content');
                     resetRecaptcha();
@@ -724,6 +732,25 @@
                 $btn.find('.btn-loader').hide();
             }
         });
+    }
+    
+    /**
+     * Show cache information
+     */
+    function showCacheInfo(ageMinutes, expiresMinutes) {
+        let message = '';
+        
+        if (ageMinutes === null || expiresMinutes === null) {
+            message = '📦 Using cached results.';
+        } else if (ageMinutes < 1) {
+            message = `📦 Using cached results (analyzed just now). Cache expires in ${expiresMinutes} minute${expiresMinutes !== 1 ? 's' : ''}.`;
+        } else {
+            message = `📦 Using cached results (analyzed ${ageMinutes} minute${ageMinutes !== 1 ? 's' : ''} ago). Cache expires in ${expiresMinutes} minute${expiresMinutes !== 1 ? 's' : ''}.`;
+        }
+        
+        message += '<br><small style="color: var(--text-secondary);">💡 Tip: Check "Force fresh analysis" if content changed recently.</small>';
+        
+        showInfo(message);
     }
     
     /**

@@ -252,16 +252,30 @@ class Meta_Ajax
 			}
 		}
 
-		// Check if URL content is cached
-		$cached_content = $rate_limiter->get_cached_url_content($url);
-		if ($cached_content !== null) {
-			wp_send_json_success([
-				'text' => $cached_content['text'],
-				'word_count' => $cached_content['word_count'],
-				'cached' => true,
-				'cached_at' => $cached_content['cached_at']
-			]);
-			return;
+		// Check if user wants to force refresh
+		$force_refresh = isset($_POST['force_refresh']) && $_POST['force_refresh'] === 'true';
+
+		// Check if URL content is cached (only if not forcing refresh)
+		if (!$force_refresh) {
+			$cached_content = $rate_limiter->get_cached_url_content($url);
+			if ($cached_content !== null) {
+				// Calculate cache age and expiry
+				$cached_timestamp = isset($cached_content['cached_timestamp']) ? $cached_content['cached_timestamp'] : null;
+				$expires_at = isset($cached_content['expires_at']) ? $cached_content['expires_at'] : null;
+
+				$age_minutes = $cached_timestamp ? floor((time() - $cached_timestamp) / 60) : null;
+				$expires_minutes = $expires_at ? max(0, floor(($expires_at - time()) / 60)) : null;
+
+				wp_send_json_success([
+					'text' => $cached_content['text'],
+					'word_count' => $cached_content['word_count'],
+					'cached' => true,
+					'cache_age_minutes' => $age_minutes,
+					'cache_expires_minutes' => $expires_minutes,
+					'cached_at' => $cached_content['cached_at']
+				]);
+				return;
+			}
 		}
 
 		// Check all rate limits
