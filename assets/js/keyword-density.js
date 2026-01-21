@@ -110,7 +110,9 @@
      * Initialize phrase length filters
      */
     function initFilters() {
-        $('.filter-tab').on('click', function() {
+        $('.filter-tab').on('click', function(e) {
+            e.preventDefault(); // Prevent any default behavior
+            
             const length = parseInt($(this).data('length'));
             
             $('.filter-tab').removeClass('active');
@@ -126,13 +128,15 @@
                 $('#stemmed-toggle-wrapper').show();
             }
             
-            displayResults(currentResults);
+            // Don't scroll when switching filters
+            displayResults(currentResults, false);
         });
         
         // Stemmed view toggle
         $('#view-stemmed').on('change', function() {
             if (currentResults) {
-                displayResults(currentResults);
+                // Don't scroll when toggling stemmed view
+                displayResults(currentResults, false);
             }
         });
     }
@@ -151,11 +155,17 @@
         
         // Process in next tick to allow UI update
         setTimeout(function() {
-            // Clean text
+            // Clean text for keyword analysis (remove special chars)
             const cleanedText = text
                 .toLowerCase()
                 .replace(/<[^>]*>/g, ' ') // Remove HTML tags
                 .replace(/[^\w\s]/g, ' ') // Remove special characters
+                .replace(/\s+/g, ' ') // Normalize whitespace
+                .trim();
+            
+            // Prepare text for readability (preserve sentence endings)
+            const readabilityText = text
+                .replace(/<[^>]*>/g, ' ') // Remove HTML tags
                 .replace(/\s+/g, ' ') // Normalize whitespace
                 .trim();
             
@@ -188,7 +198,7 @@
                 },
                 prominence: calculateProminence(cleanedText, words),
                 seoElements: analyzeSEOElements(text),
-                readability: calculateReadability(cleanedText),
+                readability: calculateReadability(readabilityText), // Use text with punctuation
                 relevancyScore: 0,  // Calculated after all metrics
                 analysisTime: ((performance.now() - startTime) / 1000).toFixed(2)
             };
@@ -352,20 +362,37 @@
      * Calculate readability score (Flesch Reading Ease)
      */
     function calculateReadability(text) {
-        const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+        // Split by sentence endings, but also handle cases with no punctuation
+        let sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
         const words = text.split(/\s+/).filter(w => w.length > 0);
-        const totalSentences = sentences.length;
         const totalWords = words.length;
+        
+        // If no sentence endings found, treat entire text as one sentence
+        // But try to detect sentences by looking for capital letters after periods/spaces
+        if (sentences.length === 0 || (sentences.length === 1 && totalWords > 50)) {
+            // Try alternative: split by double newlines or periods followed by space and capital
+            sentences = text.split(/(?:\.\s+[A-Z]|\n\n+)/).filter(s => s.trim().length > 0);
+            // If still no sentences, estimate: assume ~20 words per sentence
+            if (sentences.length === 0) {
+                sentences = [text]; // Fallback: entire text as one sentence
+            }
+        }
+        
+        const totalSentences = Math.max(1, sentences.length); // At least 1 sentence
         
         // Count syllables (approximation)
         let totalSyllables = 0;
         words.forEach(word => {
-            totalSyllables += countSyllables(word);
+            // Clean word for syllable counting (remove punctuation)
+            const cleanWord = word.replace(/[^\w]/g, '');
+            if (cleanWord.length > 0) {
+                totalSyllables += countSyllables(cleanWord);
+            }
         });
         
         // Calculate averages
-        const avgSentenceLength = totalWords / (totalSentences || 1);
-        const avgSyllablesPerWord = totalSyllables / (totalWords || 1);
+        const avgSentenceLength = totalWords / totalSentences;
+        const avgSyllablesPerWord = totalWords > 0 ? totalSyllables / totalWords : 0;
         
         // Flesch Reading Ease formula
         const fleschScore = 206.835 - (1.015 * avgSentenceLength) - (84.6 * avgSyllablesPerWord);
@@ -755,8 +782,10 @@
     
     /**
      * Display analysis results
+     * @param {Object} results - Analysis results
+     * @param {boolean} scrollToResults - Whether to scroll to results (default: true)
      */
-    function displayResults(results) {
+    function displayResults(results, scrollToResults = true) {
         // Update basic stats
         $('#total-words').text(formatNumber(results.totalWords));
         $('#unique-words').text(formatNumber(results.uniqueWords));
@@ -828,10 +857,12 @@
         // Show results
         $('#keyword-results').slideDown();
         
-        // Scroll to results
-        $('html, body').animate({
-            scrollTop: $('#keyword-results').offset().top - 100
-        }, 500);
+        // Scroll to results only if requested (not when switching filters)
+        if (scrollToResults) {
+            $('html, body').animate({
+                scrollTop: $('#keyword-results').offset().top - 100
+            }, 500);
+        }
     }
     
     /**

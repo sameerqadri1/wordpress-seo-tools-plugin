@@ -1215,8 +1215,8 @@ textarea.form-control {
 }
 
 .toggle-label {
-    display: flex;
-    flex-direction: column;
+    display: inline-flex;
+    flex-direction: row;
     gap: 5px;
     cursor: pointer;
     user-select: none;
