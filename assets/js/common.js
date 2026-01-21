@@ -155,6 +155,21 @@
     };
     
     /**
+     * Show info message
+     */
+    window.showInfo = function(message) {
+        const $errorDiv = $('#error-message');
+        if ($errorDiv.length) {
+            $errorDiv.removeClass('error-alert').addClass('info-alert');
+            $errorDiv.html(`<strong>ℹ</strong> ${message}`).slideDown();
+            
+            setTimeout(function() {
+                $errorDiv.slideUp().removeClass('info-alert').addClass('error-alert');
+            }, 3000);
+        }
+    };
+    
+    /**
      * Format number with commas
      */
     window.formatNumber = function(num) {

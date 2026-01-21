@@ -218,6 +218,7 @@ class Meta_Ajax
 
 		$validator = new Validator();
 		$rate_limiter = new Rate_Limiter();
+		$logger = new Logger();
 
 		// Validate URL
 		$url = $_POST['url'] ?? '';
@@ -231,14 +232,73 @@ class Meta_Ajax
 			return;
 		}
 
-		// Check rate limit
-		if (!$rate_limiter->should_bypass_rate_limit()) {
-			$rate_check = $rate_limiter->check_rate_limit('keyword_density_url');
+		// Verify reCAPTCHA
+		$recaptcha_response = $_POST['g-recaptcha-response'] ?? '';
+		$recaptcha_secret = get_option('seo_tools_recaptcha_secret_key', '');
 
-			if (!$rate_check['allowed']) {
+		if (!empty($recaptcha_secret)) {
+			$captcha_result = $validator->verify_recaptcha(
+				$recaptcha_response,
+				$recaptcha_secret,
+				'keyword_density_url'
+			);
+
+			if (!$captcha_result['valid']) {
 				wp_send_json_error([
-					'message' => 'Daily limit reached for URL fetching',
-					'code' => 'RATE_LIMIT_EXCEEDED'
+					'message' => 'reCAPTCHA verification failed. Please try again.',
+					'code' => 'CAPTCHA_FAILED'
+				]);
+				return;
+			}
+		}
+
+		// Check if URL content is cached
+		$cached_content = $rate_limiter->get_cached_url_content($url);
+		if ($cached_content !== null) {
+			wp_send_json_success([
+				'text' => $cached_content['text'],
+				'word_count' => $cached_content['word_count'],
+				'cached' => true,
+				'cached_at' => $cached_content['cached_at']
+			]);
+			return;
+		}
+
+		// Check all rate limits
+		if (!$rate_limiter->should_bypass_rate_limit()) {
+			// Check per-minute limit
+			$minute_check = $rate_limiter->check_per_minute_limit('keyword_density_url');
+			if (!$minute_check['allowed']) {
+				wp_send_json_error([
+					'message' => 'Too many requests. Please wait a minute and try again.',
+					'code' => 'RATE_LIMIT_PER_MINUTE',
+					'retry_after' => $minute_check['retry_after']
+				]);
+				return;
+			}
+
+			// Check concurrent limit
+			$concurrent_check = $rate_limiter->check_concurrent_limit('keyword_density_url');
+			if (!$concurrent_check['allowed']) {
+				wp_send_json_error([
+					'message' => 'Server is busy. Please try again in a moment.',
+					'code' => 'CONCURRENT_LIMIT',
+					'retry_after' => $concurrent_check['retry_after']
+				]);
+				return;
+			}
+
+			// Check daily limit
+			$rate_check = $rate_limiter->check_rate_limit('keyword_density_url');
+			if (!$rate_check['allowed']) {
+				$rate_limiter->release_concurrent_slot('keyword_density_url');
+
+				$logger->log_usage('keyword_density_url', $_POST, 'rate_limited', []);
+
+				wp_send_json_error([
+					'message' => 'Daily limit reached for URL fetching. Resets in ' . $rate_check['reset_time'] . '.',
+					'code' => 'RATE_LIMIT_EXCEEDED',
+					'reset_time' => $rate_check['reset_time']
 				]);
 				return;
 			}
@@ -250,6 +310,9 @@ class Meta_Ajax
 			'user-agent' => 'SEO Tools Bot/1.0',
 			'sslverify' => true
 		]);
+
+		// Release concurrent slot
+		$rate_limiter->release_concurrent_slot('keyword_density_url');
 
 		if (is_wp_error($response)) {
 			wp_send_json_error([
@@ -267,9 +330,21 @@ class Meta_Ajax
 		$text = preg_replace('/\s+/', ' ', $text);
 		$text = trim($text);
 
+		$word_count = str_word_count($text);
+
+		// Cache the result for 1 hour
+		$rate_limiter->cache_url_content($url, $text, $word_count);
+
+		// Log usage
+		$logger->log_usage('keyword_density_url', $_POST, 'success', [
+			'url' => $url,
+			'word_count' => $word_count
+		]);
+
 		wp_send_json_success([
 			'text' => $text,
-			'word_count' => str_word_count($text)
+			'word_count' => $word_count,
+			'cached' => false
 		]);
 	}
 }

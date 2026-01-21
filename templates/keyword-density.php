@@ -20,7 +20,7 @@ if (!defined('ABSPATH')) {
 
 	<!-- Header -->
 	<div class="tool-header">
-		<h1>📊 Keyword Density Checker</h1>
+		<h1> Keyword Density Checker</h1>
 		<p class="tool-description">
 			Analyze keyword frequency and density in your content. Find out if you're over-optimizing
 			or under-utilizing your target keywords. Helps improve your SEO naturally.
@@ -30,10 +30,10 @@ if (!defined('ABSPATH')) {
 	<!-- Input Mode Tabs -->
 	<div class="input-mode-tabs">
 		<button type="button" class="mode-tab active" data-mode="text">
-			📝 Paste Text
+			Paste Text
 		</button>
 		<button type="button" class="mode-tab" data-mode="url">
-			🌐 Enter URL
+			Enter URL
 		</button>
 	</div>
 
@@ -78,6 +78,11 @@ if (!defined('ABSPATH')) {
 				<p class="form-help">We'll fetch and analyze the content from this URL</p>
 			</div>
 
+			<!-- reCAPTCHA -->
+			<div class="form-group recaptcha-wrapper">
+				<div class="g-recaptcha" data-sitekey="<?php echo esc_attr(get_option('seo_tools_recaptcha_site_key')); ?>"></div>
+			</div>
+
 			<button type="submit" class="btn-primary">
 				<span class="btn-text">Fetch & Analyze</span>
 				<span class="btn-loader" style="display:none;">⏳ Fetching...</span>
@@ -87,12 +92,12 @@ if (!defined('ABSPATH')) {
 
 	<!-- Results Section -->
 	<div id="keyword-results" class="tool-results-card" style="display:none;">
-		<h2>📈 Content Strategy Analysis</h2>
+		<h2> Content Strategy Analysis</h2>
 
 		<!-- Relevancy Score -->
 		<div class="relevancy-score-section">
 			<div class="relevancy-score-header">
-				<h3>🎯 Content Relevancy Score</h3>
+				<h3> Content Relevancy Score</h3>
 				<div class="relevancy-score-value">
 					<span id="relevancy-score" class="score-number">0</span>
 					<span class="score-max">/100</span>
@@ -121,7 +126,7 @@ if (!defined('ABSPATH')) {
 
 		<!-- SEO Elements Check -->
 		<div class="seo-elements-section">
-			<h3>🔍 SEO Elements Check</h3>
+			<h3> SEO Elements Check</h3>
 			<div id="seo-elements-list" class="seo-checks-list">
 				<!-- Populated by JavaScript -->
 			</div>
@@ -129,7 +134,7 @@ if (!defined('ABSPATH')) {
 
 		<!-- Keyword Prominence -->
 		<div class="prominence-section">
-			<h3>📍 Keyword Prominence</h3>
+			<h3> Keyword Prominence</h3>
 			<div id="prominence-list" class="prominence-list">
 				<!-- Populated by JavaScript -->
 			</div>
@@ -137,7 +142,7 @@ if (!defined('ABSPATH')) {
 
 		<!-- Readability Score -->
 		<div class="readability-section">
-			<h3>📖 Readability Score</h3>
+			<h3> Readability Score</h3>
 			<div class="readability-details">
 				<div class="readability-main">
 					<div class="readability-score-box">
@@ -188,7 +193,7 @@ if (!defined('ABSPATH')) {
 		</div>
 
 		<!-- Phrase Length Filter -->
-		<h3 style="margin-top: 30px;">📊 Keyword Density Analysis</h3>
+		<h3 style="margin-top: 30px;"> Keyword Density Analysis</h3>
 		<div class="filter-controls">
 			<div class="filter-tabs">
 				<button type="button" class="filter-tab active" data-length="1">1-Word</button>
@@ -227,7 +232,7 @@ if (!defined('ABSPATH')) {
 				Analyze Another
 			</button>
 			<button type="button" id="export-csv" class="btn-secondary">
-				📥 Export CSV
+				Export CSV
 			</button>
 		</div>
 	</div>
@@ -237,7 +242,7 @@ if (!defined('ABSPATH')) {
 
 	<!-- How to Use -->
 	<div class="tool-info-card">
-		<h2>💡 How to Use This Tool</h2>
+		<h2> How to Use This Tool</h2>
 		<ol class="info-list">
 			<li><strong>Choose Input Mode:</strong> Select "Paste Text" for instant analysis or "Enter URL" to analyze a live page.</li>
 			<li><strong>Add Your Content:</strong> Paste your text or enter a URL.</li>
@@ -246,7 +251,7 @@ if (!defined('ABSPATH')) {
 			<li><strong>Optimize:</strong> Adjust your content if any keywords are over-optimized (>2-3% density).</li>
 		</ol>
 
-		<h3>📊 Understanding Keyword Density</h3>
+		<h3> Understanding Keyword Density</h3>
 		<ul class="info-list">
 			<li><strong>Optimal:</strong> 0.5% - 2% for primary keyword</li>
 			<li><strong>Warning:</strong> 2% - 3% might be over-optimized</li>

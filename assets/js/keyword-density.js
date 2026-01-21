@@ -38,6 +38,8 @@
             } else {
                 $('#text-mode').hide();
                 $('#url-mode').show();
+                // Reset reCAPTCHA when switching to URL mode
+                resetRecaptcha();
             }
             
             // Hide results
@@ -675,6 +677,13 @@
      * Fetch URL and analyze
      */
     function fetchAndAnalyze(url) {
+        // Get reCAPTCHA response
+        const recaptchaResponse = getRecaptchaResponse();
+        if (!recaptchaResponse && seoToolsConfig.recaptcha_site_key) {
+            showError('Please complete the reCAPTCHA verification');
+            return;
+        }
+        
         const $btn = $('#keyword-url-form button');
         $btn.prop('disabled', true);
         $btn.find('.btn-text').hide();
@@ -689,17 +698,25 @@
             data: {
                 action: 'seo_fetch_url_content',
                 nonce: seoToolsConfig.nonces.keyword,
-                url: url
+                url: url,
+                'g-recaptcha-response': recaptchaResponse
             },
             success: function(response) {
                 if (response.success) {
+                    // Show cache status if available
+                    if (response.data.cached) {
+                        showInfo('Content loaded from cache (updated ' + response.data.cached_at + ')');
+                    }
                     analyzeText(response.data.text);
+                    resetRecaptcha();
                 } else {
                     showError(response.data.message || 'Failed to fetch URL content');
+                    resetRecaptcha();
                 }
             },
             error: function() {
                 showError('Network error. Please try again.');
+                resetRecaptcha();
             },
             complete: function() {
                 $btn.prop('disabled', false);
