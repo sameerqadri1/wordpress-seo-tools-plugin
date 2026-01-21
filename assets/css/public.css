@@ -41,6 +41,10 @@
     padding: 40px 20px;
     background: transparent !important;
     color: var(--text-primary);
+    width: 100%;
+    box-sizing: border-box;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
 }
 
 /* ======================
@@ -674,6 +678,9 @@ textarea.form-control {
 /* Table */
 .results-table-wrapper {
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+    position: relative;
 }
 
 .results-table {
@@ -688,12 +695,26 @@ textarea.form-control {
     text-align: left;
     font-weight: 600;
     border-bottom: 2px solid var(--border-color);
+    white-space: nowrap;
+    min-width: 80px;
 }
 
 .results-table td {
     padding: 12px;
     color: var(--text-primary);
     border-bottom: 1px solid var(--border-color);
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.results-table td:first-child {
+    max-width: 0; /* Allows text wrapping in first column */
+    min-width: 150px;
+}
+
+.results-table td:not(:first-child) {
+    white-space: nowrap;
+    text-align: center;
 }
 
 .results-table tr:last-child td {
@@ -839,6 +860,10 @@ textarea.form-control {
         font-size: 1.75rem;
     }
     
+    .tool-header p {
+        font-size: 0.95rem;
+    }
+    
     .result-content {
         flex-direction: column;
     }
@@ -850,21 +875,364 @@ textarea.form-control {
     .tools-links {
         flex-direction: column;
     }
+    
+    /* Form adjustments */
+    .tool-form-card {
+        padding: 24px;
+    }
+    
+    .tool-results-card {
+        padding: 24px;
+    }
+    
+    /* Input mode tabs */
+    .input-mode-tabs {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    
+    .mode-tab {
+        flex: 1;
+        min-width: 120px;
+        font-size: 0.9rem;
+        padding: 12px 16px;
+    }
+    
+    /* Filter tabs */
+    .filter-tabs {
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    
+    .filter-tab {
+        flex: 1;
+        min-width: 80px;
+        font-size: 0.85rem;
+        padding: 10px 12px;
+    }
+    
+    /* Filter controls */
+    .filter-controls {
+        gap: 12px;
+    }
+    
+    /* Stats row */
+    .stats-row {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+    }
+    
+    .stat-box {
+        padding: 16px;
+    }
+    
+    .stat-value {
+        font-size: 1.75rem;
+    }
+    
+    /* Relevancy score */
+    .relevancy-score-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 16px;
+    }
+    
+    .relevancy-score-value {
+        font-size: 3rem;
+    }
+    
+    .score-breakdown {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+    }
+    
+    /* SEO elements */
+    .seo-checks-list {
+        gap: 12px;
+    }
+    
+    .seo-check-item {
+        padding: 14px;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+    
+    .seo-check-label {
+        font-size: 0.9rem;
+    }
+    
+    /* Prominence */
+    .prominence-list {
+        gap: 12px;
+    }
+    
+    .prominence-item {
+        padding: 14px;
+    }
+    
+    /* Readability */
+    .readability-main {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 20px;
+    }
+    
+    .readability-score-box {
+        width: 100%;
+        min-width: auto;
+    }
+    
+    .readability-metrics {
+        grid-template-columns: 1fr;
+    }
+    
+    /* Results table */
+    .results-table-wrapper {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        margin: 0 -24px;
+        padding: 0 24px;
+    }
+    
+    .results-table {
+        min-width: 600px;
+        font-size: 0.9rem;
+    }
+    
+    .results-table th,
+    .results-table td {
+        padding: 10px 8px;
+    }
+    
+    .results-table td:first-child {
+        min-width: 120px;
+        max-width: 200px;
+    }
+    
+    /* Stemmed toggle */
+    .stemmed-toggle {
+        padding: 12px 16px;
+    }
+    
+    .toggle-label {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .toggle-help {
+        margin-left: 0;
+        margin-top: 4px;
+    }
+    
+    /* Checkbox label */
+    .checkbox-label {
+        flex-direction: row;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    /* Progress details */
+    .progress-details {
+        flex-direction: column;
+        gap: 12px;
+    }
+    
+    .progress-detail-item {
+        padding: 10px;
+    }
+    
+    /* Warning items */
+    .warning-item {
+        flex-direction: column;
+        gap: 12px;
+    }
+    
+    /* Button adjustments */
+    .btn-primary,
+    .btn-secondary {
+        width: 100%;
+        padding: 14px 20px;
+        font-size: 1rem;
+    }
+    
+    .result-actions {
+        gap: 12px;
+    }
+    
+    .result-actions button {
+        width: 100%;
+    }
 }
 
 @media (max-width: 480px) {
     .seo-tool-container,
     .seo-tools-hub {
-        padding: 20px 16px;
+        padding: 16px 12px;
     }
     
     .tool-form-card,
     .tool-results-card {
+        padding: 16px;
+    }
+    
+    .tool-header h1 {
+        font-size: 1.5rem;
+    }
+    
+    .tool-header p {
+        font-size: 0.9rem;
+    }
+    
+    /* Stats row - single column on very small screens */
+    .stats-row {
+        grid-template-columns: 1fr;
+    }
+    
+    /* Score breakdown - single column */
+    .score-breakdown {
+        grid-template-columns: 1fr;
+    }
+    
+    /* Filter tabs - smaller */
+    .filter-tab {
+        font-size: 0.8rem;
+        padding: 8px 10px;
+        min-width: 70px;
+    }
+    
+    /* Input mode tabs */
+    .mode-tab {
+        font-size: 0.85rem;
+        padding: 10px 12px;
+        min-width: 100px;
+    }
+    
+    /* Relevancy score value */
+    .relevancy-score-value {
+        font-size: 2.5rem;
+    }
+    
+    .score-number {
+        font-size: 2.5rem;
+    }
+    
+    /* Readability score */
+    .readability-score-value {
+        font-size: 2.5rem;
+    }
+    
+    /* Table - even smaller */
+    .results-table-wrapper {
+        margin: 0 -16px;
+        padding: 0 16px;
+    }
+    
+    .results-table {
+        min-width: 500px;
+        font-size: 0.85rem;
+    }
+    
+    .results-table th,
+    .results-table td {
+        padding: 8px 6px;
+    }
+    
+    .results-table td:first-child {
+        min-width: 100px;
+        max-width: 180px;
+    }
+    
+    /* Form controls */
+    .form-control {
+        font-size: 16px; /* Prevents zoom on iOS */
+        padding: 12px;
+    }
+    
+    textarea.form-control {
+        min-height: 120px;
+    }
+    
+    /* reCAPTCHA */
+    .recaptcha-wrapper {
+        transform: scale(0.85);
+        transform-origin: 0 0;
+        margin: 16px 0;
+        overflow: hidden;
+    }
+    
+    .g-recaptcha {
+        transform: scale(0.85);
+        transform-origin: 0 0;
+    }
+    
+    /* Touch targets */
+    .filter-tab,
+    .mode-tab,
+    button,
+    .btn-primary,
+    .btn-secondary {
+        min-height: 44px; /* iOS recommended touch target */
+        touch-action: manipulation; /* Prevents double-tap zoom */
+    }
+    
+    /* Prevent text selection on buttons */
+    .filter-tab,
+    .mode-tab,
+    button {
+        -webkit-user-select: none;
+        user-select: none;
+    }
+    
+    /* Better spacing for mobile */
+    .form-group {
+        margin-bottom: 20px;
+    }
+    
+    .form-help {
+        font-size: 0.85rem;
+        margin-top: 6px;
+    }
+    
+    /* Info cards */
+    .tool-info-card {
         padding: 20px;
     }
     
-    .stats-row {
-        grid-template-columns: 1fr 1fr;
+    .tool-info-card h2,
+    .tool-info-card h3 {
+        font-size: 1.25rem;
+    }
+    
+    .info-list {
+        padding-left: 20px;
+    }
+    
+    .info-list li {
+        margin-bottom: 10px;
+        font-size: 0.9rem;
+    }
+    
+    /* Progress bar */
+    .progress-container {
+        margin-top: 16px;
+    }
+    
+    .progress-bar-fill {
+        height: 20px;
+        font-size: 0.85rem;
+    }
+    
+    /* Continue actions */
+    .continue-actions {
+        flex-direction: column;
+    }
+    
+    .continue-actions .btn-primary,
+    .continue-actions .btn-cancel {
+        width: 100%;
+        min-width: auto;
     }
 }
 
