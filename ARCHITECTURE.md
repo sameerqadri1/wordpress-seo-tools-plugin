@@ -27,7 +27,7 @@
 ### Plugin Purpose
 WordPress plugin providing three SEO tools:
 1. **Meta Title & Description Generator** (AI-powered via Google Gemini)
-2. **Keyword Density Checker** (Client-side analysis)
+2. **Keyword Density Checker** (Hybrid: client-side analysis + server-side URL fetching with rate limits)
 3. **Broken Link Checker** (Server-side crawling with concurrent limits)
 
 ### Technology Stack
@@ -295,6 +295,251 @@ verify_recaptcha(string $response, string $secret, string $action): array
 4. Check score threshold (v3) or success (v2)
 5. Return validation result
 ```
+
+---
+
+## Keyword Density Checker - Deep Dive
+
+### Overview
+
+The Keyword Density tool has evolved from a basic "word counter" into a **Content Strategist** that evaluates how well a page is optimized around its topic, not just how often words appear.
+
+It has two modes:
+
+- **Paste Text Mode (Client-side only)**
+  - All analysis happens in the browser.
+  - No server calls, no rate limits.
+  - Unlimited usage.
+
+- **URL Mode (Hybrid: Client + Server)**
+  - Server fetches page HTML (with rate limits, reCAPTCHA, caching).
+  - Browser performs all content analysis.
+  - Protected by per-minute, concurrent, and daily limits.
+
+### Components
+
+- Template: `templates/keyword-density.php`
+- Frontend logic: `assets/js/keyword-density.js`
+- AJAX handler for URL mode: `includes/ajax/class-meta-ajax.php::handle_fetch_url_content()`
+- Rate limiting + caching: `includes/database/class-rate-limiter.php`
+- Validation + reCAPTCHA: `includes/utils/class-validator.php`
+
+### Data Flow
+
+#### A. Paste Text Mode (100% Client-Side)
+
+```
+User Pastes Text (keyword-density.php)
+        │
+        ▼
+keyword-density.js
+  - Clean text (lowercase, strip HTML)
+  - Count words
+  - Build 1–4 word n-grams
+  - Apply stop words + min length (≥ 3)
+  - Calculate density & prominence
+  - Analyze SEO elements (Title/H1/etc. - when available)
+  - Compute readability (Flesch Reading Ease)
+  - Compute overall relevancy score (0–100)
+        │
+        ▼
+Render Results (no server calls)
+```
+
+#### B. URL Mode (Hybrid)
+
+```
+User Enters URL (keyword-density.php)
+        │
+        ▼
+Frontend (keyword-density.js)
+  ✓ Validate URL format
+  ✓ Ensure reCAPTCHA completed
+  → AJAX: seo_fetch_url_content
+        │
+        ▼
+AJAX Handler (Meta_Ajax::handle_fetch_url_content)
+  ✓ Verify nonce (seo_keyword_nonce)
+  ✓ Validate URL (Validator::validate_url - SSRF safe)
+  ✓ Verify reCAPTCHA (server-side)
+  ✓ Check per-minute limit (3/min/IP)
+  ✓ Check concurrent limit (5 active/IP)
+  ✓ Check daily limit (20/day/IP)
+  ✓ Check cache (15-minute transient, URL-based key)
+     ├─ If cached & !force_refresh → return cached text
+     └─ Else → fetch fresh HTML via wp_remote_get()
+  ✓ Extract text from HTML (wp_strip_all_tags)
+  ✓ Normalize whitespace
+  ✓ Cache result for 15 minutes
+  ✓ Log usage (Logger)
+        │
+        ▼
+Frontend (keyword-density.js)
+  - Analyze text (same pipeline as Paste Text)
+  - Show cache age / expiry and force-refresh tip
+  - Render full Content Strategist view
+```
+
+### Content Strategist Model
+
+The tool surfaces a **Content Relevancy Score (0–100)**, not just raw frequency. It combines four pillars:
+
+1. **Prominence (0–40 points)**
+   - Where do key phrases appear, not just how often?
+   - Heuristics (implemented in JS):
+     - Presence in **first 100 words**
+     - Presence in **first paragraph**
+     - Presence in **H1** (when available)
+   - Higher weight for early and structural appearances.
+
+2. **SEO Elements (0–30 points)**
+   - Evaluates core on-page elements when available in the input:
+     - Title tag
+     - Meta description
+     - H1
+     - Alt attributes (where present)
+   - Flags "must-fix" issues (e.g., keyword missing from Title/H1) in the UI.
+
+3. **Keyword Density (0–20 points)**
+   - Calculates density based on **filtered tokens**:
+     - Minimum word length: **≥ 3 characters**
+     - Expanded stop word list (100+ common words)
+     - Phrase-based analysis (1–4 word n-grams):
+       - 1-word: core terms
+       - 2–3-word: key phrases
+       - 4-word: **long-tail opportunities**
+   - Density is recomputed **after filtering** so percentages match what users see.
+
+4. **Readability (0–10 points)**
+   - Uses **Flesch Reading Ease**:
+     - Splits on sentence boundaries (., !, ?)
+     - Falls back to heuristic splitting when punctuation is sparse
+     - Computes:
+       - Average sentence length (words per sentence)
+       - Average syllables per word (approximate)
+   - Maps score to:
+     - Grade Level (e.g., 8th–9th, College)
+     - Status (e.g., "standard", "very difficult")
+   - Exposed in the UI with color-coded badges:
+     - Green: easy
+     - Yellow: medium
+     - Red: hard
+
+The final **Relevancy Score (0–100)** is derived from these components and displayed prominently, with a breakdown per pillar so users understand *why* a page scores high or low.
+
+### Stemming & Variant Analysis
+
+To avoid misleading users about "low density" when they use many variants, the tool includes a lightweight **Porter Stemmer** implementation in JavaScript.
+
+- **Goal:** Group morphological variants that search engines treat as the same concept:
+  - `running`, `runs`, `runner` → `run`
+  - `optimization`, `optimize`, `optimized` → `optim`
+
+#### How It Works
+
+- For 1–3 word phrases:
+  - Generate the normal keyword list (phrases + counts + density).
+  - Generate a **stemmed view** where each phrase is reduced to its root form.
+  - Aggregate counts and density per stemmed phrase.
+- UI:
+  - Toggle: **"Show Stemmed (Google's View)"**
+  - When enabled, the table shows:
+    - Root phrase
+    - Combined count / density
+    - List of variants (e.g., `running, runs, runner`).
+
+#### Over-Optimization Warnings
+
+The tool detects when multiple variants combine into an SEO risk:
+
+- Condition (1-word stems):
+  - At least **3 variants** (e.g., `run, running, runner`)
+  - Combined density **> 2.5%**
+- Surface a warning block:
+  - Root term
+  - Variant list
+  - Total appearances + density
+  - Guidance that search engines may see this as over-optimization.
+
+This makes the tool behave much closer to how modern search engines interpret text (entity/intent-based rather than raw tokens).
+
+### Stop Words & Token Filtering
+
+To focus on meaningful terms:
+
+- Stop word list expanded to **100+ terms**, including:
+  - Articles, pronouns, helper verbs
+  - Common question words (what, how, where…)
+  - Filler words ("basically", "actually", etc.) where applicable
+- Single-word phrases:
+  - Discard if:
+    - Word is a stop word
+    - Word length \< 3
+- Multi-word phrases:
+  - Built from the cleaned token stream (stop words removed where appropriate).
+
+### URL Mode: Rate Limits, Caching & Force Refresh
+
+URL mode is protected by a **multi-layer** system to balance UX with server safety:
+
+- **Daily Limit (database-backed):**
+  - Tool key: `keyword_density_url`
+  - Default: **20 requests/day per IP**
+- **Per-Minute Limit (transient):**
+  - Max **3 requests/minute per IP**.
+  - Returns a friendly "Too many requests. Please wait a minute" error when exceeded.
+- **Concurrent Requests (transient):**
+  - Max **5 active requests per IP** for this tool.
+  - Prevents a single user from overwhelming the server.
+- **Caching (transient, 15 minutes):**
+  - Keyed by URL hash: `seo_url_content_{md5(url)}`
+  - Stores:
+    - Extracted text
+    - Word count
+    - Cached timestamp + expiry timestamp
+  - Benefits:
+    - Subsequent users analyzing the same URL get **instant** results.
+    - Cached responses **do not** consume daily/minute/concurrent budgets (aside from reCAPTCHA).
+
+#### Force Refresh
+
+Some users want to re-test a page immediately after editing it. For this, the UI exposes:
+
+- Checkbox: **"Force fresh analysis (bypasses 15-minute cache)"**
+- Behavior:
+  - Sends `force_refresh = true` in the AJAX payload.
+  - Skips cache lookup; always refetches from origin.
+  - Still subject to:
+    - Daily limit (20/day)
+    - Per-minute limit (3/min)
+    - Concurrent limit (5 active)
+  - Checkbox auto-resets after each run to avoid accidental overuse.
+- Response metadata includes:
+  - `cached` (bool)
+  - `cache_age_minutes`
+  - `cache_expires_minutes`
+  - `cached_at` (human-readable)
+
+The frontend renders a clear info banner when cached data is used, telling the user when it was analyzed and when it will refresh, plus a tip to enable force refresh if content changed.
+
+### Mobile Responsiveness
+
+The Keyword Density tool UI is heavily optimized for mobile, implemented in `assets/css/public.css`:
+
+- **Breakpoints:**
+  - `@media (max-width: 768px)` – tablets / small laptops
+  - `@media (max-width: 480px)` – phones
+- **Responsive Behaviors:**
+  - Forms and result cards reduce padding on small screens.
+  - Input mode tabs and filter tabs wrap and become full-width buttons where needed.
+  - Stats row and score breakdown switch from multi-column to 2-column (tablet) then 1-column (phone).
+  - Readability, prominence, and SEO element sections stack vertically.
+  - Results table becomes horizontally scrollable with touch-friendly scrolling.
+  - Buttons use at least **44px** height (Apple HIG recommendation) for tappability.
+  - Font sizes are tuned to avoid iOS zoom on input focus (minimum 16px for form controls).
+  - reCAPTCHA widget is scaled down on small screens while remaining usable.
+
+This ensures the Content Strategist experience is consistent and usable on desktop, tablets, and phones.
 
 ---
 
