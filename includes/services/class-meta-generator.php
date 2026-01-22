@@ -72,7 +72,8 @@ class Meta_Generator
 			'description' => $result['description'],
 			'title_length' => $title_length,
 			'description_length' => $desc_length,
-			'tokens_used' => $this->estimate_tokens($result['title'] . ' ' . $result['description'])
+			'tokens_used' => $result['tokens_used'] ?? 0,
+			'tokens_breakdown' => $result['tokens_breakdown'] ?? null
 		];
 	}
 

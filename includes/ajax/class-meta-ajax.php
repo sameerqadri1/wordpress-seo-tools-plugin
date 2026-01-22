@@ -67,7 +67,73 @@ class Meta_Ajax
 			}
 		}
 
-		// 3. Check rate limiting (unless admin)
+		// 3. Check global Gemini API limits (everyone, including admins)
+		// 3a. Check global RPD limit (20/day)
+		$rpd_check = $rate_limiter->check_global_gemini_rpd();
+		if (!$rpd_check['allowed']) {
+			$logger->log_usage('meta_generator', $_POST, 'global_rpd_exceeded', [
+				'global_count' => $rpd_check['current_count']
+			]);
+
+			wp_send_json_error([
+				'message' => $rpd_check['message'],
+				'code' => 'GEMINI_RPD_EXCEEDED',
+				'retry_after' => $rpd_check['retry_after'],
+				'global_limit' => $rpd_check['limit'],
+				'global_count' => $rpd_check['current_count']
+			]);
+			return;
+		}
+
+		// 3b. Check global RPM limit (10/minute)
+		$rpm_check = $rate_limiter->check_global_gemini_rpm();
+		if (!$rpm_check['allowed']) {
+			$logger->log_usage('meta_generator', $_POST, 'global_rpm_exceeded', [
+				'global_count' => $rpm_check['current_count']
+			]);
+
+			wp_send_json_error([
+				'message' => $rpm_check['message'],
+				'code' => 'GEMINI_RPM_EXCEEDED',
+				'retry_after' => $rpm_check['retry_after'],
+				'global_limit' => $rpm_check['limit'],
+				'global_count' => $rpm_check['current_count']
+			]);
+			return;
+		}
+
+		// 3c. Estimate tokens for TPM check
+		$input_data_temp = [
+			'keyword' => sanitize_text_field($_POST['keyword'] ?? ''),
+			'business_name' => sanitize_text_field($_POST['business_name'] ?? ''),
+			'description' => sanitize_textarea_field($_POST['description'] ?? ''),
+			'page_type' => sanitize_text_field($_POST['page_type'] ?? 'service')
+		];
+
+		// Rough estimate: prompt + expected response
+		$estimated_prompt = strlen(json_encode($input_data_temp));
+		$estimated_response = 300; // ~75 tokens for title + description
+		$estimated_tokens = (int) ceil(($estimated_prompt + $estimated_response) / 4);
+
+		// Check global TPM limit (250,000/minute)
+		$tpm_check = $rate_limiter->check_global_gemini_tpm($estimated_tokens);
+		if (!$tpm_check['allowed']) {
+			$logger->log_usage('meta_generator', $_POST, 'global_tpm_exceeded', [
+				'global_tokens' => $tpm_check['current_tokens'],
+				'estimated_tokens' => $estimated_tokens
+			]);
+
+			wp_send_json_error([
+				'message' => $tpm_check['message'],
+				'code' => 'GEMINI_TPM_EXCEEDED',
+				'retry_after' => $tpm_check['retry_after'],
+				'global_limit' => $tpm_check['limit'],
+				'global_tokens' => $tpm_check['current_tokens']
+			]);
+			return;
+		}
+
+		// 4. Check per-user rate limiting (unless admin)
 		if (!$rate_limiter->should_bypass_rate_limit()) {
 			$rate_check = $rate_limiter->check_rate_limit('meta_generator');
 
@@ -88,7 +154,7 @@ class Meta_Ajax
 			}
 		}
 
-		// 4. Validate input
+		// 5. Validate input
 		$validation = $validator->validate_meta_input($_POST);
 
 		if (!$validation['valid']) {
@@ -102,7 +168,7 @@ class Meta_Ajax
 
 		$input_data = $validation['data'];
 
-		// 5. Check cache
+		// 6. Check cache
 		$cache_key = $cache_manager->generate_cache_key('meta', $input_data);
 		$cached_result = $cache_manager->get($cache_key);
 
@@ -124,7 +190,7 @@ class Meta_Ajax
 			return;
 		}
 
-		// 6. Generate meta using Gemini API
+		// 7. Generate meta using Gemini API
 		$meta_generator = new Meta_Generator();
 		$result = $meta_generator->generate(
 			$input_data['keyword'],
@@ -146,27 +212,37 @@ class Meta_Ajax
 			return;
 		}
 
-		// 7. Cache the result
+		// 8. Cache the result
 		$cache_manager->set($cache_key, [
 			'title' => $result['title'],
 			'description' => $result['description']
 		]);
 
-		// 8. Log success
+		// 9. Log success with token usage
 		$logger->log_usage('meta_generator', $input_data, 'success', [
 			'cached' => false,
-			'api_tokens_used' => $result['tokens_used'] ?? 0
+			'api_tokens_used' => $result['tokens_used'] ?? 0,
+			'tokens_breakdown' => $result['tokens_breakdown'] ?? null,
+			'global_rpm' => $rpm_check['current_count'] ?? 0,
+			'global_rpd' => $rpd_check['current_count'] ?? 0,
+			'global_tpm' => $tpm_check['current_tokens'] ?? 0
 		]);
 
-		// 9. Return response
+		// 10. Return response
 		wp_send_json_success([
 			'title' => $result['title'],
 			'description' => $result['description'],
 			'title_length' => strlen($result['title']),
 			'description_length' => strlen($result['description']),
 			'cached' => false,
+			'tokens_used' => $result['tokens_used'] ?? 0,
 			'remaining' => $rate_check['remaining'] ?? 0,
-			'reset_time' => $rate_check['reset_time'] ?? ''
+			'reset_time' => $rate_check['reset_time'] ?? '',
+			'global_status' => [
+				'rpd' => ['current' => $rpd_check['current_count'], 'limit' => $rpd_check['limit'], 'remaining' => $rpd_check['remaining']],
+				'rpm' => ['current' => $rpm_check['current_count'], 'limit' => $rpm_check['limit'], 'remaining' => $rpm_check['remaining']],
+				'tpm' => ['current' => $tpm_check['current_tokens'], 'limit' => $tpm_check['limit'], 'remaining' => $tpm_check['remaining']]
+			]
 		]);
 	}
 

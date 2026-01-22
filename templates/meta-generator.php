@@ -20,7 +20,7 @@ if (!defined('ABSPATH')) {
 
 	<!-- Header -->
 	<div class="tool-header">
-		<h1>🎯 AI-Powered Meta Title & Description Generator</h1>
+		<h1> AI-Powered Meta Title & Description Generator</h1>
 		<p class="tool-description">
 			Create SEO-optimized meta titles and descriptions in seconds using advanced AI technology.
 			Perfect length, keyword-optimized, and designed to boost your click-through rates.
@@ -29,7 +29,6 @@ if (!defined('ABSPATH')) {
 
 	<!-- Rate Limit Info -->
 	<div class="rate-limit-info" id="rate-limit-status">
-		<span class="limit-icon">⚡</span>
 		<span class="limit-text">Loading...</span>
 	</div>
 
@@ -108,7 +107,7 @@ if (!defined('ABSPATH')) {
 
 	<!-- Results Section -->
 	<div id="meta-results" class="tool-results-card" style="display:none;">
-		<h2>✨ Generated Meta Tags</h2>
+		<h2> Generated Meta Tags</h2>
 
 		<div class="result-item">
 			<div class="result-header">
@@ -117,7 +116,7 @@ if (!defined('ABSPATH')) {
 			</div>
 			<div class="result-content">
 				<div id="generated-title" class="generated-text"></div>
-				<button type="button" class="btn-copy" data-target="generated-title">📋 Copy</button>
+				<button type="button" class="btn-copy" data-target="generated-title"> Copy</button>
 			</div>
 			<p class="result-note">Optimal: 50-60 characters</p>
 		</div>
@@ -129,7 +128,7 @@ if (!defined('ABSPATH')) {
 			</div>
 			<div class="result-content">
 				<div id="generated-description" class="generated-text"></div>
-				<button type="button" class="btn-copy" data-target="generated-description">📋 Copy</button>
+				<button type="button" class="btn-copy" data-target="generated-description"> Copy</button>
 			</div>
 			<p class="result-note">Optimal: 150-160 characters</p>
 		</div>
@@ -146,7 +145,7 @@ if (!defined('ABSPATH')) {
 
 	<!-- How to Use -->
 	<div class="tool-info-card">
-		<h2>💡 How to Use This Tool</h2>
+		<h2> How to Use This Tool</h2>
 		<ol class="info-list">
 			<li><strong>Enter Your Keyword:</strong> Type the main keyword you want to target for SEO.</li>
 			<li><strong>Add Business Name:</strong> Your company or website name.</li>
@@ -156,7 +155,7 @@ if (!defined('ABSPATH')) {
 			<li><strong>Copy & Use:</strong> Copy the generated tags and add them to your website's HTML or CMS.</li>
 		</ol>
 
-		<h3>📝 Implementation</h3>
+		<h3> Implementation</h3>
 		<p>Add the generated meta tags to your page's <code>&lt;head&gt;</code> section:</p>
 		<pre class="code-example">&lt;title&gt;Your Generated Title Here&lt;/title&gt;
 &lt;meta name="description" content="Your Generated Description Here"&gt;</pre>
@@ -167,10 +166,10 @@ if (!defined('ABSPATH')) {
 		<h3>Try Our Other Tools</h3>
 		<div class="tools-links">
 			<a href="<?php echo esc_url(site_url('/seo-tools/keyword-density/')); ?>" class="tool-link">
-				📊 Keyword Density Checker
+				Keyword Density Checker
 			</a>
 			<a href="<?php echo esc_url(site_url('/seo-tools/broken-link-checker/')); ?>" class="tool-link">
-				🔗 Broken Link Checker
+				Broken Link Checker
 			</a>
 		</div>
 	</div>

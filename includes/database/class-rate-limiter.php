@@ -28,7 +28,14 @@ class Rate_Limiter
     /**
      * Maximum requests per minute per tool per IP
      */
-    private const MAX_REQUESTS_PER_MINUTE = 3;
+    private const MAX_REQUESTS_PER_MINUTE = 2;
+
+    /**
+     * Gemini API global limits (free tier)
+     */
+    private const GEMINI_RPM_LIMIT = 10;        // Requests per minute
+    private const GEMINI_RPD_LIMIT = 20;        // Requests per day
+    private const GEMINI_TPM_LIMIT = 250000;    // Tokens per minute
 
     /**
      * Check if request is allowed and increment counter atomically
@@ -415,5 +422,177 @@ class Rate_Limiter
             'cached_timestamp' => time(),
             'expires_at' => time() + 900  // 15 minutes from now
         ], 900); // 15 minutes
+    }
+
+    /**
+     * Check global Gemini RPD (Requests Per Day) limit
+     *
+     * @return array ['allowed' => bool, 'current_count' => int, 'remaining' => int, 'retry_after' => string]
+     * @since 1.0.0
+     */
+    public function check_global_gemini_rpd(): array
+    {
+        // Get current date
+        $current_date = date('Y-m-d');
+        $key = "seo_gemini_rpd_{$current_date}";
+
+        // Get current count
+        $current_count = (int) get_transient($key);
+
+        // Check limit
+        if ($current_count >= self::GEMINI_RPD_LIMIT) {
+            // Calculate time until midnight
+            $midnight = strtotime('tomorrow midnight');
+            $seconds_until_reset = $midnight - time();
+            $hours = floor($seconds_until_reset / 3600);
+            $minutes = floor(($seconds_until_reset % 3600) / 60);
+
+            $retry_time = $hours > 0
+                ? sprintf('%d hours %d minutes', $hours, $minutes)
+                : sprintf('%d minutes', $minutes);
+
+            return [
+                'allowed' => false,
+                'current_count' => $current_count,
+                'limit' => self::GEMINI_RPD_LIMIT,
+                'remaining' => 0,
+                'retry_after' => $retry_time,
+                'message' => "Daily API limit reached ({$current_count}/{$current_count} requests). Resets in {$retry_time}."
+            ];
+        }
+
+        // Increment counter (expires at midnight)
+        $seconds_until_midnight = strtotime('tomorrow midnight') - time();
+        set_transient($key, $current_count + 1, $seconds_until_midnight);
+
+        return [
+            'allowed' => true,
+            'current_count' => $current_count + 1,
+            'limit' => self::GEMINI_RPD_LIMIT,
+            'remaining' => self::GEMINI_RPD_LIMIT - ($current_count + 1)
+        ];
+    }
+
+    /**
+     * Check global Gemini RPM (Requests Per Minute) limit
+     *
+     * @return array ['allowed' => bool, 'current_count' => int, 'remaining' => int, 'retry_after' => int]
+     * @since 1.0.0
+     */
+    public function check_global_gemini_rpm(): array
+    {
+        // Get current minute
+        $current_minute = date('Y-m-d-H-i');
+        $key = "seo_gemini_rpm_{$current_minute}";
+
+        // Get current count
+        $current_count = (int) get_transient($key);
+
+        // Check limit
+        if ($current_count >= self::GEMINI_RPM_LIMIT) {
+            // Calculate seconds until next minute
+            $seconds_until_reset = 60 - (int) date('s');
+
+            return [
+                'allowed' => false,
+                'current_count' => $current_count,
+                'limit' => self::GEMINI_RPM_LIMIT,
+                'remaining' => 0,
+                'retry_after' => $seconds_until_reset,
+                'message' => "High traffic. Please try again in {$seconds_until_reset} seconds."
+            ];
+        }
+
+        // Increment counter (expires in 60 seconds)
+        set_transient($key, $current_count + 1, 60);
+
+        return [
+            'allowed' => true,
+            'current_count' => $current_count + 1,
+            'limit' => self::GEMINI_RPM_LIMIT,
+            'remaining' => self::GEMINI_RPM_LIMIT - ($current_count + 1)
+        ];
+    }
+
+    /**
+     * Check global Gemini TPM (Tokens Per Minute) limit
+     *
+     * @param int $estimated_tokens Estimated tokens for this request
+     * @return array ['allowed' => bool, 'current_tokens' => int, 'remaining' => int, 'retry_after' => int]
+     * @since 1.0.0
+     */
+    public function check_global_gemini_tpm(int $estimated_tokens): array
+    {
+        // Get current minute
+        $current_minute = date('Y-m-d-H-i');
+        $key = "seo_gemini_tpm_{$current_minute}";
+
+        // Get current token count
+        $current_tokens = (int) get_transient($key);
+        $new_total = $current_tokens + $estimated_tokens;
+
+        // Check limit
+        if ($new_total > self::GEMINI_TPM_LIMIT) {
+            // Calculate seconds until next minute
+            $seconds_until_reset = 60 - (int) date('s');
+
+            return [
+                'allowed' => false,
+                'current_tokens' => $current_tokens,
+                'estimated_request_tokens' => $estimated_tokens,
+                'limit' => self::GEMINI_TPM_LIMIT,
+                'remaining' => max(0, self::GEMINI_TPM_LIMIT - $current_tokens),
+                'retry_after' => $seconds_until_reset,
+                'message' => "Token limit approaching. Please try again in {$seconds_until_reset} seconds."
+            ];
+        }
+
+        // Increment token counter (expires in 60 seconds)
+        set_transient($key, $new_total, 60);
+
+        return [
+            'allowed' => true,
+            'current_tokens' => $new_total,
+            'estimated_request_tokens' => $estimated_tokens,
+            'limit' => self::GEMINI_TPM_LIMIT,
+            'remaining' => self::GEMINI_TPM_LIMIT - $new_total
+        ];
+    }
+
+    /**
+     * Get global Gemini API status (for admin dashboard)
+     *
+     * @return array Current status of all limits
+     * @since 1.0.0
+     */
+    public function get_global_gemini_status(): array
+    {
+        $current_date = date('Y-m-d');
+        $current_minute = date('Y-m-d-H-i');
+
+        $rpd_count = (int) get_transient("seo_gemini_rpd_{$current_date}");
+        $rpm_count = (int) get_transient("seo_gemini_rpm_{$current_minute}");
+        $tpm_count = (int) get_transient("seo_gemini_tpm_{$current_minute}");
+
+        return [
+            'rpd' => [
+                'current' => $rpd_count,
+                'limit' => self::GEMINI_RPD_LIMIT,
+                'remaining' => max(0, self::GEMINI_RPD_LIMIT - $rpd_count),
+                'percentage' => round(($rpd_count / self::GEMINI_RPD_LIMIT) * 100, 1)
+            ],
+            'rpm' => [
+                'current' => $rpm_count,
+                'limit' => self::GEMINI_RPM_LIMIT,
+                'remaining' => max(0, self::GEMINI_RPM_LIMIT - $rpm_count),
+                'percentage' => round(($rpm_count / self::GEMINI_RPM_LIMIT) * 100, 1)
+            ],
+            'tpm' => [
+                'current' => $tpm_count,
+                'limit' => self::GEMINI_TPM_LIMIT,
+                'remaining' => max(0, self::GEMINI_TPM_LIMIT - $tpm_count),
+                'percentage' => round(($tpm_count / self::GEMINI_TPM_LIMIT) * 100, 1)
+            ]
+        ];
     }
 }

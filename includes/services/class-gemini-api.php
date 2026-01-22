@@ -56,7 +56,7 @@ class Gemini_API
 	public function __construct(?string $api_key = null)
 	{
 		$this->api_key = $api_key ?? $this->get_api_key_from_options();
-		$this->model = get_option('seo_tools_gemini_model', 'gemini-2.0-flash-lite');
+		$this->model = get_option('seo_tools_gemini_model', 'gemini-2.5-flash-lite');
 		$this->load_circuit_state();
 	}
 
@@ -282,13 +282,24 @@ PROMPT;
 			return $parsed;
 		}
 
+		// Calculate actual tokens used
+		$prompt_tokens = $this->estimate_tokens($prompt);
+		$response_tokens = $this->estimate_tokens($generated_text);
+		$total_tokens = $prompt_tokens + $response_tokens;
+
 		return [
 			'success' => true,
 			'title' => $parsed['title'],
 			'description' => $parsed['description'],
 			'title_length' => strlen($parsed['title']),
 			'description_length' => strlen($parsed['description']),
-			'raw_response' => $generated_text
+			'raw_response' => $generated_text,
+			'tokens_used' => $total_tokens,
+			'tokens_breakdown' => [
+				'prompt' => $prompt_tokens,
+				'response' => $response_tokens,
+				'total' => $total_tokens
+			]
 		];
 	}
 
@@ -480,5 +491,19 @@ PROMPT;
 			'success' => false,
 			'message' => $result['error'] ?? 'API test failed'
 		];
+	}
+
+	/**
+	 * Estimate tokens in text (rough approximation)
+	 *
+	 * @param string $text Text to estimate
+	 * @return int Estimated token count
+	 * @since 1.0.0
+	 */
+	private function estimate_tokens(string $text): int
+	{
+		// Rough estimate: 1 token ≈ 4 characters for English text
+		// More accurate for production would be tiktoken library, but this is good enough
+		return (int) ceil(strlen($text) / 4);
 	}
 }
