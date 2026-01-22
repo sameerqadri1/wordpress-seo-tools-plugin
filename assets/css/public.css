@@ -157,13 +157,15 @@
 }
 
 .benefits-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    display: flex;
+    flex-wrap: wrap;
     gap: 30px;
 }
 
 .benefit-item {
     padding: 20px;
+    flex: 1 1 250px;
+    min-width: 250px;
 }
 
 .benefit-icon {
@@ -304,7 +306,7 @@
     line-height: 18px;
     text-align: center;
     background: var(--text-secondary);
-    color: white;
+    background-color:#B60016;
     border-radius: 50%;
     font-size: 12px;
     cursor: help;
@@ -1492,6 +1494,37 @@ textarea.form-control {
 
 /* Button hover - scoped to tool container only */
 .seo-tool-container button:hover {
+    color: #ffffff !important;
+}
+
+/* Link colors - scoped to tools hub page only */
+.seo-tools-hub a {
+    color: #ffffff !important;
+}
+
+.seo-tools-hub a:hover {
+    color: #B60016 !important;
+}
+
+/* Hub page specific link styles */
+.seo-tools-hub .footer-note a {
+    color: #ffffff !important;
+}
+
+.seo-tools-hub .footer-note a:hover {
+    color: #B60016 !important;
+}
+
+.seo-tools-hub strong a {
+    color: #ffffff !important;
+}
+
+.seo-tools-hub strong a:hover {
+    color: #B60016 !important;
+}
+
+/* Button hover - scoped to tools hub only */
+.seo-tools-hub button:hover {
     color: #ffffff !important;
 }
 
