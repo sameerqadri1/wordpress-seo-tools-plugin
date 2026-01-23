@@ -1528,6 +1528,15 @@ textarea.form-control {
     color: #ffffff !important;
 }
 
+/* CTA button - override Elementor */
+.seo-tools-hub .cta-button {
+    color: #000000 !important;
+}
+
+.seo-tools-hub .cta-button:hover {
+    color: #000000 !important;
+}
+
 /* ============================================
    Content Strategist - New Sections
    ============================================ */

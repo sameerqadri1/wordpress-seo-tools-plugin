@@ -20,7 +20,7 @@ if (!defined('ABSPATH')) {
 
 	<!-- Header -->
 	<div class="tool-header">
-		<h1> AI-Powered Meta Title & Description Generator</h1>
+		<h1> AI Meta Title & Description Generator</h1>
 		<p class="tool-description">
 			Create SEO-optimized meta titles and descriptions in seconds using advanced AI technology.
 			Perfect length, keyword-optimized, and designed to boost your click-through rates.
@@ -177,8 +177,5 @@ if (!defined('ABSPATH')) {
 	<!-- Footer -->
 	<div class="tool-footer">
 		<p>Powered by <strong><a href="<?php echo esc_url(home_url('/')); ?>">SaaS Marketing</a></strong> ❤️</p>
-		<p class="footer-cta">
-			Need unlimited access? <a href="<?php echo esc_url(site_url('/contact/')); ?>">Contact us</a> about our premium services.
-		</p>
 	</div>
 </div>

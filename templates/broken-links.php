@@ -230,7 +230,7 @@ if (!defined('ABSPATH')) {
 	<div class="other-tools">
 		<h3>Try Our Other Tools</h3>
 		<div class="tools-links">
-			<a href="<?php echo esc_url(site_url('/seo-tools/meta-generator/')); ?>" class="tool-link">
+			<a href="<?php echo esc_url(site_url('/seo-tools/ai-meta-generator/')); ?>" class="tool-link">
 				AI Meta Generator
 			</a>
 			<a href="<?php echo esc_url(site_url('/seo-tools/keyword-density/')); ?>" class="tool-link">

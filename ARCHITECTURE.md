@@ -2,7 +2,8 @@
 
 **Version:** 1.0.0  
 **Developer:** Sameer Qadri  
-**Last Updated:** January 2026
+**Last Updated:** January 2026  
+**Live Demo:** https://saasmarketing.ca/seo-tools/
 
 ---
 
@@ -11,14 +12,16 @@
 1. [Overview](#overview)
 2. [System Architecture](#system-architecture)
 3. [Core Components](#core-components)
-4. [Broken Link Checker - Deep Dive](#broken-link-checker---deep-dive)
-5. [Security & Rate Limiting](#security--rate-limiting)
-6. [Data Flow](#data-flow)
-7. [Limitations & Constraints](#limitations--constraints)
-8. [Configuration](#configuration)
-9. [Database Schema](#database-schema)
-10. [API Integration](#api-integration)
-11. [Troubleshooting](#troubleshooting)
+4. [Meta Generator - Deep Dive](#meta-generator---deep-dive)
+5. [Keyword Density Checker - Deep Dive](#keyword-density-checker---deep-dive)
+6. [Broken Link Checker - Deep Dive](#broken-link-checker---deep-dive)
+7. [Security & Rate Limiting](#security--rate-limiting)
+8. [Data Flow](#data-flow)
+9. [Limitations & Constraints](#limitations--constraints)
+10. [Configuration](#configuration)
+11. [Database Schema](#database-schema)
+12. [API Integration](#api-integration)
+13. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -33,7 +36,7 @@ WordPress plugin providing three SEO tools:
 ### Technology Stack
 - **Backend:** PHP 8.1+, WordPress 6.0+
 - **Frontend:** JavaScript (ES6+), jQuery, HTML5, CSS3
-- **AI API:** Google Gemini 2.0 Flash-Lite (Free Tier)
+- **AI API:** Google Gemini 2.5 Flash-Lite (Free Tier, default)
 - **Security:** reCAPTCHA v2, WordPress Nonces
 - **Storage:** WordPress Transients API + Custom Database Tables
 
@@ -188,6 +191,12 @@ CREATE TABLE wp_seo_rate_limits (
 - Keyword Density (URL mode): **20 uses/day**
 - Keyword Density (text mode): **Unlimited** (client-side)
 
+**Global Gemini API Limits (Free Tier):**
+- **Requests Per Day (RPD):** 20 requests/day (shared across all users)
+- **Requests Per Minute (RPM):** 10 requests/minute (shared across all users)
+- **Tokens Per Minute (TPM):** 250,000 tokens/minute (shared across all users)
+- **Per-User Limits:** 5 meta generations/day, 2 requests/minute
+
 **Methods:**
 - `check_rate_limit($tool_name)`: Verify if user can use tool
 - `increment_usage($tool_name)`: Record usage
@@ -219,9 +228,9 @@ if (current_user_can('manage_options')) {
 - **Purpose:** Protect server from overload
 
 #### Layer 3: URL Duplicate Prevention
-- **Limit:** 3 scans per website per day per user
+- **Limit:** 3 scans per website per day per user (increased from 1)
 - **Storage:** Transient `seo_scanned_urls_{user_id}` → `['url' => count]`
-- **Purpose:** Prevent abuse, encourage testing diverse sites
+- **Purpose:** Prevent abuse, allow reasonable retesting, encourage testing diverse sites
 
 **Key Methods:**
 ```php
@@ -295,6 +304,274 @@ verify_recaptcha(string $response, string $secret, string $action): array
 4. Check score threshold (v3) or success (v2)
 5. Return validation result
 ```
+
+---
+
+## Meta Generator - Deep Dive
+
+### Overview
+
+The Meta Generator tool uses Google Gemini 2.5 Flash-Lite AI to generate SEO-optimized meta titles and descriptions. It combines intelligent prompt engineering with strict length validation to produce compelling, keyword-rich meta tags that improve click-through rates.
+
+**Key Features:**
+- AI-powered generation using Google Gemini 2.5 Flash-Lite
+- Strict character limits (50-60 for title, 150-160 for description)
+- Real-time character counting with visual indicators
+- Page-type context awareness (homepage, service, blog, product, etc.)
+- Multi-layer rate limiting (per-user + global API limits)
+- Token tracking and usage monitoring
+- Circuit breaker pattern for API reliability
+
+### Components
+
+- **Template:** `templates/meta-generator.php`
+- **Frontend logic:** `assets/js/meta-generator.js`
+- **AJAX handler:** `includes/ajax/class-meta-ajax.php::handle_generate_meta()`
+- **Business logic:** `includes/services/class-meta-generator.php`
+- **API wrapper:** `includes/services/class-gemini-api.php`
+- **Rate limiting:** `includes/database/class-rate-limiter.php`
+- **Validation:** `includes/utils/class-validator.php`
+
+### Data Flow
+
+```
+User Fills Form (meta-generator.php)
+        │
+        ▼
+Frontend (meta-generator.js)
+  ✓ Validate form fields
+  ✓ Check reCAPTCHA completion
+  ✓ Check rate limit status (display remaining)
+  → AJAX: seo_generate_meta
+        │
+        ▼
+AJAX Handler (Meta_Ajax::handle_generate_meta)
+  ✓ Verify nonce (CSRF protection)
+  ✓ Verify reCAPTCHA (server-side)
+  ✓ Check global Gemini RPD (20/day)
+  ✓ Check global Gemini RPM (10/minute)
+  ✓ Estimate tokens → Check global Gemini TPM (250k/min)
+  ✓ Check per-user rate limit (5/day, 2/minute)
+  ✓ Acquire per-minute lock (prevent burst)
+        │
+        ▼
+Meta Generator Service (Meta_Generator::generate)
+  → Build prompt with context
+  → Call Gemini_API::generate_meta()
+        │
+        ▼
+Gemini API Wrapper (Gemini_API)
+  ✓ Build AI prompt (page-type aware)
+  ✓ Call API with retry logic (max 2 retries)
+  ✓ Parse JSON response
+  ✓ Extract title & description
+  ✓ Track tokens used
+  ✓ Update circuit breaker state
+        │
+        ▼
+Response Processing
+  ✓ Validate character lengths
+  ✓ Truncate if needed (with ellipsis)
+  ✓ Return results + token usage
+        │
+        ▼
+Frontend (meta-generator.js)
+  ✓ Display generated title & description
+  ✓ Show character counts with color indicators
+  ✓ Enable copy buttons
+  ✓ Update rate limit status
+  ✓ Log usage (Logger)
+```
+
+### AI Prompt Engineering
+
+The tool uses context-aware prompts that adapt based on page type:
+
+**Prompt Structure:**
+```
+You are an expert SEO specialist. Generate an optimized meta title and meta description for a webpage.
+
+Context:
+- Keyword: [user's keyword]
+- Business Name: [user's business name]
+- Page Description: [user's description]
+- Page Type: [homepage/service/blog/product/about/contact]
+
+Requirements:
+1. Meta Title:
+   - Length: Exactly 50-60 characters (strict requirement)
+   - Include the keyword naturally
+   - Include business name if it fits
+   - Make it compelling and click-worthy
+   - Use power words when appropriate
+
+2. Meta Description:
+   - Length: Exactly 150-160 characters (strict requirement)
+   - Include the keyword naturally (1-2 times)
+   - Compelling call-to-action
+   - Describe the value proposition
+   - Make it engaging and click-worthy
+
+Format your response EXACTLY like this (no extra text):
+TITLE: [your optimized title here]
+DESCRIPTION: [your optimized description here]
+```
+
+**Page-Type Context:**
+- **Homepage:** Emphasizes brand and main value proposition
+- **Service:** Focuses on service benefits and keywords
+- **Blog:** Highlights topic and engagement
+- **Product:** Emphasizes features and benefits
+- **About:** Personalizes brand story
+- **Contact:** Encourages action and accessibility
+
+### Rate Limiting & API Management
+
+**Multi-Layer Protection:**
+
+1. **Global Gemini API Limits (Enforced First):**
+   - **RPD (Requests Per Day):** 20 requests/day (shared across all users)
+   - **RPM (Requests Per Minute):** 10 requests/minute (shared across all users)
+   - **TPM (Tokens Per Minute):** 250,000 tokens/minute (shared across all users)
+   - **Purpose:** Protect free-tier API quota from exhaustion
+   - **Storage:** WordPress transients with date-based keys
+
+2. **Per-User Daily Limit:**
+   - **Limit:** 5 generations per day per IP/user
+   - **Storage:** `wp_seo_rate_limits` table
+   - **Reset:** Midnight (site timezone)
+   - **Admin Bypass:** Administrators have unlimited access
+
+3. **Per-User Per-Minute Limit:**
+   - **Limit:** 2 requests per minute per IP/user
+   - **Purpose:** Prevent burst traffic and API abuse
+   - **Storage:** Transient with 60-second expiry
+   - **Admin Bypass:** Administrators still subject to global API limits
+
+**Rate Limit Display:**
+- Frontend shows remaining generations for the day
+- Color-coded indicators:
+  - **Green:** Unlimited (admin)
+  - **Blue:** 3+ remaining
+  - **Yellow:** 1-2 remaining
+  - **Red:** 0 remaining (disabled button)
+- Real-time updates after each generation
+
+### Character Validation & Truncation
+
+**Validation Rules:**
+- **Title:** 50-60 characters (optimal SEO length)
+- **Description:** 150-160 characters (optimal for SERP display)
+
+**Truncation Logic:**
+```php
+// If AI generates content that's too long:
+if ($title_length > 60) {
+    $result['title'] = substr($result['title'], 0, 57) . '...';
+    $title_length = 60;
+}
+
+if ($desc_length > 160) {
+    $result['description'] = substr($result['description'], 0, 157) . '...';
+    $desc_length = 160;
+}
+```
+
+**Frontend Indicators:**
+- Real-time character counting as user types
+- Color-coded length indicators:
+  - **Green:** Optimal range
+  - **Yellow:** Close to limit
+  - **Red:** Over limit (truncated)
+
+### Token Tracking & Usage
+
+**Token Estimation:**
+- **Formula:** `1 token ≈ 4 characters` (English text)
+- **Input tokens:** Prompt length / 4
+- **Output tokens:** Response length / 4 (estimated ~75 tokens)
+- **Total:** Input + Output tokens
+
+**Token Tracking:**
+- Tracked per request in `Gemini_API::call_api()`
+- Returned in AJAX response: `tokens_used`, `tokens_breakdown`
+- Used for global TPM limit enforcement
+- Displayed in admin dashboard (Global Gemini API Status)
+
+### Error Handling & Retry Logic
+
+**Retry Strategy:**
+- **Max Retries:** 2 attempts (3 total)
+- **Exponential Backoff:** 2s, 4s delays
+- **No Retry For:**
+  - Invalid API key
+  - Quota exceeded (429)
+  - Invalid request (400)
+
+**Error Codes:**
+- `INVALID_NONCE`: CSRF token expired
+- `CAPTCHA_FAILED`: reCAPTCHA verification failed
+- `GEMINI_RPD_EXCEEDED`: Global daily limit reached
+- `GEMINI_RPM_EXCEEDED`: Global per-minute limit reached
+- `GEMINI_TPM_EXCEEDED`: Global token limit reached
+- `RATE_LIMIT_EXCEEDED`: Per-user daily limit reached
+- `API_ERROR`: Gemini API error (with retry)
+- `NETWORK_ERROR`: Connection timeout/failure
+
+### Circuit Breaker Pattern
+
+**Purpose:** Prevent hammering the API when it's down or slow.
+
+**States:**
+- **Closed:** Normal operation, API calls allowed
+- **Open:** API failing, requests blocked (cooldown period)
+- **Half-Open:** Testing if API recovered
+
+**Implementation:**
+- **Failure Threshold:** 3 consecutive failures
+- **Cooldown Period:** 5 minutes
+- **Storage:** Transient `seo_gemini_circuit_state`
+- **Auto-Recovery:** Automatically transitions to half-open after cooldown
+
+**Benefits:**
+- Reduces unnecessary API calls during outages
+- Faster error responses (no waiting for timeout)
+- Protects API quota from wasted requests
+
+### UI Features
+
+**Form Fields:**
+- **Target Keyword:** Max 100 chars, required
+- **Business Name:** Max 50 chars, required
+- **Page Description:** Max 300 chars, required
+- **Page Type:** Dropdown (homepage, service, blog, product, about, contact)
+
+**Real-Time Feedback:**
+- Character counters for all text inputs
+- Rate limit status display (remaining generations)
+- Loading state during generation ("⏳ Generating...")
+- Success/error messages
+
+**Results Display:**
+- Generated title with character count indicator
+- Generated description with character count indicator
+- Copy buttons for easy copying
+- "Generate Another" button to reset form
+- Color-coded length indicators (green/yellow/red)
+
+**Global API Status (Admin):**
+- Real-time display of RPD, RPM, TPM usage
+- Shows current counts vs limits
+- Helps admins monitor API quota consumption
+
+### Mobile Responsiveness
+
+The Meta Generator UI is fully responsive:
+- Form fields stack vertically on mobile
+- Character counters remain visible
+- Copy buttons are touch-friendly (44px height)
+- Results cards adapt to screen width
+- reCAPTCHA widget scales appropriately
 
 ---
 
@@ -382,7 +659,7 @@ Frontend (keyword-density.js)
 
 ### Content Strategist Model
 
-The tool surfaces a **Content Relevancy Score (0–100)**, not just raw frequency. It combines four pillars:
+The tool has evolved from a basic "word counter" into a **Content Strategist** that evaluates how well a page is optimized around its topic, not just how often words appear. It surfaces a **Content Relevancy Score (0–100)**, not just raw frequency. It combines four pillars:
 
 1. **Prominence (0–40 points)**
    - Where do key phrases appear, not just how often?
@@ -407,12 +684,12 @@ The tool surfaces a **Content Relevancy Score (0–100)**, not just raw frequenc
      - Phrase-based analysis (1–4 word n-grams):
        - 1-word: core terms
        - 2–3-word: key phrases
-       - 4-word: **long-tail opportunities**
+       - 4-word: **long-tail opportunities** (new in v1.0.0)
    - Density is recomputed **after filtering** so percentages match what users see.
 
 4. **Readability (0–10 points)**
    - Uses **Flesch Reading Ease**:
-     - Splits on sentence boundaries (., !, ?)
+     - Splits on sentence boundaries (., !, ?) with punctuation preserved
      - Falls back to heuristic splitting when punctuation is sparse
      - Computes:
        - Average sentence length (words per sentence)
@@ -500,6 +777,7 @@ URL mode is protected by a **multi-layer** system to balance UX with server safe
   - Benefits:
     - Subsequent users analyzing the same URL get **instant** results.
     - Cached responses **do not** consume daily/minute/concurrent budgets (aside from reCAPTCHA).
+  - **Force Refresh Option:** Users can bypass cache with a checkbox to fetch fresh content (still subject to rate limits).
 
 #### Force Refresh
 
@@ -587,7 +865,8 @@ External HTTP Requests
 - **Max Links:** 100 links per page
 - **Process:** Synchronous, completes in one request
 - **Use Case:** Fast check of specific page
-- **Duration:** 10-30 seconds
+- **Duration:** 30 seconds - 2 minutes
+- **UI:** Radio button selection, no default mode
 
 ```php
 check_page_links(string $url, int $max_links = 100): array
@@ -596,9 +875,11 @@ check_page_links(string $url, int $max_links = 100): array
 #### Full Site Audit
 - **Target:** Entire website
 - **Max Pages:** 1,000 pages
-- **Process:** Chunked (50 pages per chunk), auto-continue
+- **Process:** Chunked (50 pages per chunk), auto-continue with progress bar
 - **Use Case:** Comprehensive site scan
-- **Duration:** 2-30 minutes (depending on site size)
+- **Duration:** 10-30 minutes (depending on site size)
+- **UI:** Radio button selection, no default mode
+- **Features:** Dynamic progress bar, estimated vs real progress, total elapsed time tracking
 
 ```php
 crawl_website(string $start_url, int $max_pages = 50, ?array $resume_state = null): array
@@ -862,12 +1143,147 @@ else {
 | **Concurrent Scans (User)** | 1 | 1 | Per user | On completion |
 | **Concurrent Scans (Global)** | 3 | 3 | Sitewide | On completion |
 | **Meta Generation** | 5/day | ∞ | Per user | Midnight |
+| **Meta Generation (Per Minute)** | 2/min | ∞ | Per user | Rolling window |
 | **Keyword Density (URL)** | 20/day | ∞ | Per user | Midnight |
+| **Keyword Density (URL Per Minute)** | 3/min | ∞ | Per user | Rolling window |
 | **Keyword Density (Text)** | ∞ | ∞ | Client-side | N/A |
+| **Global Gemini RPD** | 20/day | N/A | Sitewide | Midnight PST |
+| **Global Gemini RPM** | 10/min | N/A | Sitewide | Rolling window |
+| **Global Gemini TPM** | 250k/min | N/A | Sitewide | Rolling window |
 
 ---
 
 ## Data Flow
+
+This section provides high-level data flow diagrams for all three tools. For detailed technical flows, see each tool's "Deep Dive" section above.
+
+### Meta Generator - Complete Flow
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 1. USER SUBMITS FORM                                        │
+│    - Enters keyword, business name, description            │
+│    - Selects page type                                      │
+│    - Completes reCAPTCHA                                    │
+│    - Clicks "Generate Meta Tags"                           │
+└────────────────┬────────────────────────────────────────────┘
+                 ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 2. FRONTEND VALIDATION (meta-generator.js)                 │
+│    ✓ Form fields filled?                                    │
+│    ✓ reCAPTCHA completed?                                   │
+│    ✓ Rate limit remaining?                                  │
+│    → Send AJAX request to backend                           │
+└────────────────┬────────────────────────────────────────────┘
+                 ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 3. AJAX HANDLER (class-meta-ajax.php)                      │
+│    ✓ Verify nonce (CSRF protection)                         │
+│    ✓ Verify reCAPTCHA (server-side)                         │
+│    ✓ Check global Gemini RPD (20/day)                        │
+│    ✓ Check global Gemini RPM (10/minute)                     │
+│    ✓ Estimate tokens → Check global Gemini TPM (250k/min)   │
+│    ✓ Check per-user rate limit (5/day, 2/minute)            │
+└────────────────┬────────────────────────────────────────────┘
+                 ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 4. META GENERATOR SERVICE (class-meta-generator.php)       │
+│    - Build AI prompt (page-type aware)                       │
+│    - Call Gemini_API::generate_meta()                        │
+└────────────────┬────────────────────────────────────────────┘
+                 ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 5. GEMINI API WRAPPER (class-gemini-api.php)               │
+│    - Build prompt with context                               │
+│    - Call API with retry logic (max 2 retries)               │
+│    - Parse JSON response                                     │
+│    - Extract title & description                              │
+│    - Track tokens used                                        │
+│    - Update circuit breaker state                             │
+└────────────────┬────────────────────────────────────────────┘
+                 ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 6. RESPONSE PROCESSING                                      │
+│    ✓ Validate character lengths                              │
+│    ✓ Truncate if needed (with ellipsis)                      │
+│    ✓ Return results + token usage                            │
+└────────────────┬────────────────────────────────────────────┘
+                 ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 7. FRONTEND DISPLAY (meta-generator.js)                    │
+│    - Display generated title & description                   │
+│    - Show character counts with color indicators              │
+│    - Enable copy buttons                                      │
+│    - Update rate limit status                                 │
+│    - Log usage (Logger)                                       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Keyword Density Checker - Complete Flow
+
+**Paste Text Mode (100% Client-Side):**
+```
+User Pastes Text → Frontend Analysis → Display Results
+(No server calls, unlimited usage)
+```
+
+**URL Mode (Hybrid):**
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 1. USER ENTERS URL                                          │
+│    - Enters URL to analyze                                   │
+│    - Optionally checks "Force fresh analysis"                │
+│    - Completes reCAPTCHA                                     │
+│    - Clicks "Analyze"                                        │
+└────────────────┬────────────────────────────────────────────┘
+                 ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 2. FRONTEND VALIDATION (keyword-density.js)                │
+│    ✓ URL format valid?                                       │
+│    ✓ reCAPTCHA completed?                                    │
+│    → AJAX: seo_fetch_url_content                             │
+└────────────────┬────────────────────────────────────────────┘
+                 ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 3. AJAX HANDLER (class-meta-ajax.php)                      │
+│    ✓ Verify nonce                                            │
+│    ✓ Validate URL (SSRF safe)                               │
+│    ✓ Verify reCAPTCHA                                        │
+│    ✓ Check per-minute limit (3/min)                         │
+│    ✓ Check concurrent limit (5 active)                      │
+│    ✓ Check daily limit (20/day)                              │
+│    ✓ Check cache (15 min) or fetch fresh                     │
+└────────────────┬────────────────────────────────────────────┘
+                 ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 4. CONTENT EXTRACTION                                       │
+│    - Fetch HTML via wp_remote_get()                          │
+│    - Extract main content (strip HTML)                        │
+│    - Normalize whitespace                                    │
+│    - Cache result for 15 minutes                             │
+└────────────────┬────────────────────────────────────────────┘
+                 ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 5. FRONTEND ANALYSIS (keyword-density.js)                 │
+│    - Build 1-4 word n-grams                                   │
+│    - Apply stop words + min length (≥ 3)                      │
+│    - Calculate density & prominence                           │
+│    - Analyze SEO elements (Title/H1/etc.)                     │
+│    - Compute readability (Flesch Reading Ease)               │
+│    - Compute relevancy score (0-100)                          │
+│    - Apply Porter Stemmer (group variations)                 │
+│    - Detect over-optimization                                 │
+└────────────────┬────────────────────────────────────────────┘
+                 ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 6. DISPLAY RESULTS                                          │
+│    - Show relevancy score breakdown                           │
+│    - Display keyword tables (1-4 word phrases)               │
+│    - Show prominence, SEO elements, readability               │
+│    - Display stemming warnings (if any)                      │
+│    - Show cache info (if cached)                             │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ### Broken Link Checker - Complete Flow
 
@@ -1027,9 +1443,12 @@ MAX_CONCURRENT_PER_HOST = 2     // Requests per hostname
 CACHE_EXPIRY = 3600             // 1 hour in seconds
 
 // Gemini API
-GEMINI_MODEL = 'gemini-2.0-flash-lite'
+GEMINI_MODEL = 'gemini-2.5-flash-lite'  // Default model (upgraded from 2.0)
 GEMINI_MAX_TOKENS = 500         // Response length limit
 GEMINI_TEMPERATURE = 0.7        // Creativity (0=deterministic, 1=random)
+GEMINI_RPD_LIMIT = 20           // Global requests per day (free tier)
+GEMINI_RPM_LIMIT = 10           // Global requests per minute (free tier)
+GEMINI_TPM_LIMIT = 250000       // Global tokens per minute (free tier)
 ```
 
 ---
@@ -1118,7 +1537,7 @@ CREATE TABLE `wp_seo_usage_logs` (
 
 **Endpoint:**
 ```
-POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent
+POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent
 ```
 
 **Request Format:**
@@ -1323,15 +1742,27 @@ ON DUPLICATE KEY UPDATE usage_count = usage_count + 1
 
 ### v1.0.0 (January 2026)
 - ✅ Initial release
-- ✅ Meta Title & Description Generator (Gemini AI)
-- ✅ Keyword Density Checker (client-side)
-- ✅ Broken Link Checker (full site crawling)
+- ✅ Meta Title & Description Generator (Gemini 2.5 Flash-Lite AI)
+- ✅ Keyword Density Checker → **Content Strategist** (client-side analysis)
+- ✅ Broken Link Checker (Quick Scan + Full Site Audit modes)
 - ✅ reCAPTCHA v2 integration
-- ✅ Multi-layer rate limiting
-- ✅ Auto-continue for large scans
-- ✅ Dynamic progress bar
-- ✅ URL duplicate prevention (3 scans/day)
+- ✅ Multi-layer rate limiting (daily, per-minute, concurrent, global API)
+- ✅ Auto-continue for large scans with progress bar
+- ✅ Dynamic progress bar (estimated + real progress)
+- ✅ URL duplicate prevention (3 scans/day per website)
 - ✅ Concurrent scan limits (1 user, 3 global)
+- ✅ Content Strategist features:
+  - 4-word phrase analysis (long-tail keywords)
+  - Porter Stemmer (group word variations)
+  - Prominence scoring (first 100 words, H1, first paragraph)
+  - SEO elements analysis (Title, Meta Description, H1, Alt text)
+  - Readability score (Flesch Reading Ease)
+  - Weighted relevancy score (0-100)
+  - Over-optimization warnings
+- ✅ URL mode caching (15 minutes) with force refresh option
+- ✅ Global Gemini API limits tracking (RPD, RPM, TPM)
+- ✅ Mobile-responsive UI for all tools
+- ✅ CSS scoping to prevent theme conflicts (Elementor-compatible)
 
 ---
 
@@ -1339,6 +1770,7 @@ ON DUPLICATE KEY UPDATE usage_count = usage_count + 1
 
 **Developer:** Sameer Qadri  
 **Website:** [saasmarketing.ca](https://saasmarketing.ca)  
+**Live Demo:** [https://saasmarketing.ca/seo-tools/](https://saasmarketing.ca/seo-tools/)  
 **License:** GPL v2 or later  
 **Repository:** [GitHub](https://github.com/sameerqadri1/wordpress-seo-tools-plugin)
 

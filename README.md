@@ -1,29 +1,43 @@
 # SEO Marketing Tools - WordPress Plugin
 
-Professional SEO tools suite for WordPress including AI-powered meta generator, keyword density checker, and broken link checker.
+Professional SEO tools suite for WordPress including AI-powered meta generator, keyword density checker (Content Strategist), and broken link checker.
+
+**Live Demo:** [https://saasmarketing.ca/seo-tools/](https://saasmarketing.ca/seo-tools/)
 
 ## Features
 
 ### 🎯 AI Meta Title & Description Generator
-- Powered by Google Gemini AI
+- Powered by Google Gemini 2.5 Flash-Lite AI
 - Generates SEO-optimized meta titles (50-60 chars)
 - Creates compelling meta descriptions (150-160 chars)
 - Smart character counting and validation
-- **Rate Limit:** 5 generations per day per user
+- Global API status monitoring (RPD, RPM, TPM)
+- **Rate Limit:** 5 generations per day per user, 2 per minute
+- **Global API Limit:** 20 requests/day, 10 requests/minute (shared across all users)
 
-### 📊 Keyword Density Checker
-- Analyze text content or URLs
-- Find 1-word, 2-word, and 3-word phrases
-- Calculate keyword density percentages
-- Identify over-optimization (keyword stuffing)
-- **Rate Limit:** Unlimited for text mode, 20/day for URL mode
+### 📊 Keyword Density Checker → **Content Strategist**
+- **Two modes:** Paste text (unlimited) or analyze URL (rate-limited)
+- **Advanced Analysis:**
+  - 1-word, 2-word, 3-word, and **4-word phrases** (long-tail keywords)
+  - Porter Stemmer: Groups word variations (running, runs, runner → run)
+  - Prominence Score: Analyzes keyword placement (first 100 words, H1, first paragraph)
+  - SEO Elements Analysis: Checks Title, Meta Description, H1, Alt text
+  - Readability Score: Flesch Reading Ease with grade level
+  - **Weighted Relevancy Score (0-100):** Combines all factors for actionable insights
+- Over-optimization warnings (stemming-based detection)
+- **Rate Limit:** Unlimited for text mode, 20/day + 3/min for URL mode
+- **Caching:** 15-minute cache for URL content with force refresh option
 
 ### 🔗 Broken Link Checker
-- Scan any webpage for broken links
-- Check up to 50 links per scan
+- **Two scan modes:**
+  - **Quick Scan:** Single webpage, up to 100 links (30 seconds - 2 minutes)
+  - **Full Site Audit:** Entire website, up to 1,000 pages (10-30 minutes)
+- Chunked processing with auto-continue
+- Dynamic progress bar (estimated + real progress)
 - Detailed status codes and response times
 - Export results to CSV
-- **Rate Limit:** 5 checks per day per user
+- **Rate Limit:** 5 checks per day per user, 3 scans per website per day
+- **Concurrent Limits:** 1 scan per user, 3 scans globally
 
 ## Requirements
 
@@ -112,10 +126,14 @@ Create 4 new pages in WordPress:
 ## Rate Limiting
 
 ### Default Limits (Per Day Per IP)
-- Meta Generator: 5 requests
-- Broken Link Checker: 5 requests
-- Keyword Density (URL mode): 20 requests
+- Meta Generator: 5 requests/day, 2 requests/minute
+- Broken Link Checker: 5 requests/day
+- Keyword Density (URL mode): 20 requests/day, 3 requests/minute
 - Keyword Density (Text mode): Unlimited
+
+### Global API Limits (Shared Across All Users)
+- Gemini API: 20 requests/day, 10 requests/minute, 250,000 tokens/minute
+- These limits are enforced globally to protect the free-tier API quota
 
 ### Admin Bypass
 Logged-in administrators bypass all rate limits.
@@ -146,10 +164,11 @@ Stores usage logs with hashed IPs (GDPR compliant). Auto-cleaned based on retent
 
 ## Caching
 
-- Results are cached for 24 hours (configurable)
-- Reduces API usage
-- Improves performance
-- Can be cleared manually from admin panel
+- **Link Checker Results:** Cached for 1 hour
+- **URL Content (Keyword Density):** Cached for 15 minutes
+- **Force Refresh Option:** Available for URL mode to bypass cache
+- Reduces API usage and improves performance
+- Cache metadata displayed to users (age, expiry time)
 
 ## Troubleshooting
 
@@ -167,9 +186,10 @@ Stores usage logs with hashed IPs (GDPR compliant). Auto-cleaned based on retent
 - Or login as admin to bypass limits
 
 ### "No links found" or timeout
-- Page may have too many links (limit: 50)
-- Increase timeout in settings
-- Try a smaller page
+- Quick Scan: Checks up to 100 links per page
+- Full Site Audit: Processes 50 pages per chunk
+- Increase timeout in settings if needed
+- Try Quick Scan mode for faster results
 
 ### Plugin activation error
 - Check PHP version (must be 8.1+)
@@ -180,9 +200,11 @@ Stores usage logs with hashed IPs (GDPR compliant). Auto-cleaned based on retent
 
 - Optimized for speed (<3s average response time)
 - Lazy loading of JavaScript
-- Aggressive caching strategy
+- Aggressive caching strategy (15 min - 1 hour)
 - Minimal database queries
-- No jQuery dependency on frontend (uses vanilla JS)
+- jQuery used for AJAX and DOM manipulation
+- Mobile-responsive design (tablet + phone breakpoints)
+- CSS scoped to prevent theme conflicts (Elementor-compatible)
 
 ## Privacy & GDPR
 
@@ -192,11 +214,21 @@ Stores usage logs with hashed IPs (GDPR compliant). Auto-cleaned based on retent
 - Data retention policy (30 days default)
 - Easy data deletion
 
+## Live Demo
+
+**Test the tools live:** [https://saasmarketing.ca/seo-tools/](https://saasmarketing.ca/seo-tools/)
+
+Try all three tools with real-time results:
+- AI Meta Generator
+- Keyword Density (Content Strategist)
+- Broken Link Checker
+
 ## Support
 
 For support, feature requests, or bug reports:
 - Visit: https://saasmarketing.ca/contact/
 - Email: info@saasmarketing.ca
+- Live Demo: https://saasmarketing.ca/seo-tools/
 
 ## Credits
 
@@ -207,15 +239,30 @@ For support, feature requests, or bug reports:
 
 ## Changelog
 
-### Version 1.0.0 (2026-01-16)
-- Initial release
-- AI-powered meta generator
-- Keyword density checker
-- Broken link checker
-- Database-based rate limiting
-- Admin dashboard with analytics
-- GDPR compliant logging
-- reCAPTCHA v2 security
+### Version 1.0.0 (January 2026)
+- ✅ Initial release
+- ✅ AI-powered meta generator (Gemini 2.5 Flash-Lite)
+- ✅ Keyword Density Checker → **Content Strategist**
+  - 4-word phrase analysis (long-tail keywords)
+  - Porter Stemmer (word variation grouping)
+  - Prominence scoring (first 100 words, H1, first paragraph)
+  - SEO elements analysis (Title, Meta Description, H1, Alt text)
+  - Readability score (Flesch Reading Ease)
+  - Weighted relevancy score (0-100)
+  - Over-optimization warnings
+- ✅ Broken Link Checker (Quick Scan + Full Site Audit)
+  - Two scan modes with radio button selection
+  - Chunked processing with auto-continue
+  - Dynamic progress bar (estimated + real progress)
+  - Total elapsed time tracking
+- ✅ Database-based rate limiting (daily, per-minute, concurrent)
+- ✅ Global API limits tracking (RPD, RPM, TPM)
+- ✅ Admin dashboard with analytics
+- ✅ GDPR compliant logging
+- ✅ reCAPTCHA v2 security
+- ✅ URL mode caching (15 minutes) with force refresh
+- ✅ Mobile-responsive UI for all tools
+- ✅ CSS scoping to prevent theme conflicts
 
 ## License
 

@@ -27,7 +27,6 @@ $stats = $logger->get_today_stats();
 	<div class="seo-tools-grid">
 		<!-- Meta Generator Tool -->
 		<div class="tool-card">
-			<div class="tool-icon">🎯</div>
 			<h2>AI Meta Generator</h2>
 			<p>Generate SEO-optimized meta titles and descriptions powered by AI. Perfect for improving click-through rates.</p>
 			<ul class="tool-features">
@@ -36,15 +35,14 @@ $stats = $logger->get_today_stats();
 				<li>✓ Instant results</li>
 				<li>⚡ 5 free per day</li>
 			</ul>
-			<a href="<?php echo esc_url(site_url('/seo-tools/meta-generator/')); ?>" class="tool-button">
+			<a href="<?php echo esc_url(site_url('/seo-tools/ai-meta-generator/')); ?>" class="tool-button">
 				Use Tool →
 			</a>
-			<span class="tool-stat">Used <?php echo esc_html($stats['total_requests']); ?> times today</span>
+			<span class="tool-stat">Free Meta Generator Tool</span>
 		</div>
 
 		<!-- Keyword Density Tool -->
 		<div class="tool-card">
-			<div class="tool-icon">📊</div>
 			<h2>Keyword Density Checker</h2>
 			<p>Analyze keyword frequency and density in your content. Avoid over-optimization and improve your SEO.</p>
 			<ul class="tool-features">
@@ -61,7 +59,6 @@ $stats = $logger->get_today_stats();
 
 		<!-- Broken Link Checker Tool -->
 		<div class="tool-card">
-			<div class="tool-icon">🔗</div>
 			<h2>Broken Link Checker</h2>
 			<p>Find and fix broken links on your website. Improve user experience and maintain your SEO rankings.</p>
 			<ul class="tool-features">
@@ -82,22 +79,18 @@ $stats = $logger->get_today_stats();
 		<h2>Why Use Our SEO Tools?</h2>
 		<div class="benefits-grid">
 			<div class="benefit-item">
-				<span class="benefit-icon">🚀</span>
 				<h3>Fast & Reliable</h3>
 				<p>Instant results with 99.9% uptime. No registration required.</p>
 			</div>
 			<div class="benefit-item">
-				<span class="benefit-icon">🔒</span>
 				<h3>Secure & Private</h3>
 				<p>Your data is never stored or shared. GDPR compliant.</p>
 			</div>
 			<div class="benefit-item">
-				<span class="benefit-icon">🤖</span>
 				<h3>AI-Powered</h3>
 				<p>Leveraging Google's Gemini AI for smart content generation.</p>
 			</div>
 			<div class="benefit-item">
-				<span class="benefit-icon">💯</span>
 				<h3>100% Free</h3>
 				<p>Free daily usage limits. No hidden fees or upsells.</p>
 			</div>
@@ -114,6 +107,5 @@ $stats = $logger->get_today_stats();
 	<!-- Footer -->
 	<div class="seo-tools-footer">
 		<p>Powered by <strong><a href="<?php echo esc_url(home_url('/')); ?>">SaaS Marketing</a></strong> ❤️</p>
-		<p class="footer-note">Free tools provided as-is. For support, please <a href="<?php echo esc_url(site_url('/contact/')); ?>">contact us</a>.</p>
 	</div>
 </div>
